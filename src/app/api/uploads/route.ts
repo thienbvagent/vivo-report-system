@@ -4,6 +4,7 @@ import { calculateFileHash } from '@/lib/file-hash';
 import { findUploadByHash, saveUploadRecord, saveReportItems } from '@/lib/db-storage';
 import { forwardImportToN8n } from '@/lib/n8n-client';
 import { transformExcelRows, RawExcelRow } from '@/lib/business-rules';
+import { readExcelBuffer, fixZip64Buffer } from '@/lib/excel-parser';
 import * as XLSX from 'xlsx';
 
 export async function POST(req: NextRequest) {
@@ -21,10 +22,11 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const rawBuffer = Buffer.from(arrayBuffer);
+    const buffer = fixZip64Buffer(rawBuffer);
 
     // 2. Chống upload trùng file qua SHA-256
-    const fileHash = calculateFileHash(buffer);
+    const fileHash = calculateFileHash(rawBuffer);
     const existingUpload = findUploadByHash(session.centerCode, fileHash);
     if (existingUpload) {
       return NextResponse.json({
@@ -36,10 +38,10 @@ export async function POST(req: NextRequest) {
 
     const uploadId = `UPL_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    // 3. Phân tích nội bộ để kiểm tra tính hợp lệ & lưu trữ
+    // 3. Phân tích nội bộ để kiểm tra tính hợp lệ & lưu trữ (hỗ trợ Zip64 chống lỗi Failed to allocate memory)
     let localRows: RawExcelRow[] = [];
     try {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const workbook = readExcelBuffer(buffer);
       const sheetName = workbook.SheetNames[0];
       localRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
     } catch (parseErr: any) {

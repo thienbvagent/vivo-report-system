@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import path from 'path';
+import fs from 'fs';
 import * as XLSX from 'xlsx';
 import { transformExcelRows, RawExcelRow } from '../src/lib/business-rules';
 
@@ -478,4 +479,20 @@ test('TEST THỰC TẾ TRÊN FILE EXCEL MẪU D:\\VN0000182_...xlsx', () => {
   assert.strictEqual(itemRow7['Xuất Sửa Chữa'], 1);
 
   console.log('-> Toàn bộ Test Case khớp chính xác 100%!');
+});
+
+test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Failed to allocate memory', () => {
+  const { readExcelBuffer } = require('../src/lib/excel-parser');
+  const filePath = path.resolve('VN0000182_Bảng báo cáo truy vấn chi tiết phiếu công tác sửa chữa_2026-09-15 16_50_52.xlsx');
+  if (fs.existsSync(filePath)) {
+    const rawBuf = fs.readFileSync(filePath);
+    const wb = readExcelBuffer(rawBuf);
+    assert.strictEqual(wb.SheetNames[0], 'Sheet1');
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    assert.strictEqual(rows.length, 106);
+    const res = transformExcelRows(rows, 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.inputRows, 106);
+    console.log(`-> File ZIP64 2026-09-15: Đọc thành công ${res.inputRows} dòng, ${res.validRows} dòng hợp lệ!`);
+  }
 });
