@@ -1,0 +1,140 @@
+{
+  "name": "Vivo Report - Query DATA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vivo-report-query",
+        "options": {}
+      },
+      "id": "node-webhook-query",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "vivo-report-query"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $headers['x-workflow-secret'] }}",
+              "value2": "VivoSecretKey@2026"
+            }
+          ]
+        }
+      },
+      "id": "node-verify-secret-query",
+      "name": "Verify Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "mode": "id"
+        },
+        "range": "DATA!A:S",
+        "options": {}
+      },
+      "id": "node-get-rows-data",
+      "name": "Get Rows DATA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        640,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = (req.center_code || '').trim().toUpperCase();\nconst reportDate = (req.report_date || '').trim();\n\nconst allRows = $input.all();\nconst filtered = [];\n\nfor (const it of allRows) {\n  const row = it.json;\n  const rowCenter = String(row['Mã TTBH'] || '').trim().toUpperCase();\n  const rowDate = String(row['Ngày báo cáo'] || '').trim();\n\n  if (centerCode && rowCenter !== centerCode) continue;\n  if (reportDate && reportDate.toUpperCase() !== 'ALL' && rowDate !== reportDate) continue;\n\n  filtered.push(row);\n}\n\nconst totalRows = filtered.length;\nconst totalUnitPrice = filtered.reduce((acc, r) => acc + (parseFloat(r['Đơn giá']) || 0), 0);\nconst totalCash = filtered.reduce((acc, r) => acc + (parseFloat(r['Doanh thu tiền mặt']) || 0), 0);\nconst totalDebt = filtered.reduce((acc, r) => acc + (parseFloat(r['Công nợ']) || 0), 0);\nconst totalWarrantyExport = filtered.reduce((acc, r) => acc + (parseInt(r['Xuất Bảo Hành']) || 0), 0);\nconst totalRepairExport = filtered.reduce((acc, r) => acc + (parseInt(r['Xuất Sửa Chữa']) || 0), 0);\nconst countKl = filtered.filter(r => r['Khách hàng'] === 'KL').length;\nconst countTgdd = filtered.filter(r => r['Khách hàng'] === 'TGDĐ').length;\n\nreturn [{\n  json: {\n    success: true,\n    center_code: centerCode,\n    report_date: reportDate,\n    summary: {\n      totalRows,\n      totalUnitPrice,\n      totalCash,\n      totalDebt,\n      totalWarrantyExport,\n      totalRepairExport,\n      countKl,\n      countTgdd\n    },\n    rows: filtered\n  }\n}];\n"
+      },
+      "id": "node-filter-rows",
+      "name": "Filter and Summarize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "node-respond-query",
+      "name": "Return Rows",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Secret": {
+      "main": [
+        [
+          {
+            "node": "Get Rows DATA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Rows DATA": {
+      "main": [
+        [
+          {
+            "node": "Filter and Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter and Summarize": {
+      "main": [
+        [
+          {
+            "node": "Return Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

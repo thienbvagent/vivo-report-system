@@ -1,0 +1,213 @@
+{
+  "name": "Vivo Report - Export BaoCao",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vivo-report-export",
+        "options": {}
+      },
+      "id": "node-webhook-export",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "vivo-report-export"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $headers['x-workflow-secret'] }}",
+              "value2": "VivoSecretKey@2026"
+            }
+          ]
+        }
+      },
+      "id": "node-verify-secret-export",
+      "name": "Verify Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "mode": "id"
+        },
+        "range": "DATA!A:S",
+        "options": {}
+      },
+      "id": "node-get-rows-for-export",
+      "name": "Get Rows DATA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        640,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = (req.center_code || '').trim().toUpperCase();\nconst reportDate = (req.report_date || '').trim();\n\nconst allRows = $input.all();\nconst baoCaoItems = [];\n\nfor (const it of allRows) {\n  const row = it.json;\n  const rowCenter = String(row['Mã TTBH'] || '').trim().toUpperCase();\n  const rowDate = String(row['Ngày báo cáo'] || '').trim();\n\n  // Chỉ lấy đúng center_code và report_date\n  if (rowCenter !== centerCode) continue;\n  if (rowDate !== reportDate) continue;\n\n  const isTgdd = row['Khách hàng'] === 'TGDĐ';\n  \n  // Quy chuẩn đối với TGDĐ vs KL:\n  // - Đối với TGDĐ: công nợ điền số 0 (nếu k phát sinh hoặc BH), tiền mặt để trống (không dùng tiền mặt)\n  // - Đối với KL: công nợ để trống (không tính KL trong công nợ), tiền mặt điền số tiền thực thu\n  let debtVal = '';\n  let cashVal = '';\n\n  if (isTgdd) {\n    debtVal = (row['Công nợ'] !== null && row['Công nợ'] !== undefined) ? parseFloat(row['Công nợ']) : 0;\n    cashVal = '';\n  } else {\n    debtVal = '';\n    cashVal = (row['Doanh thu tiền mặt'] !== null && row['Doanh thu tiền mặt'] !== undefined) ? parseFloat(row['Doanh thu tiền mặt']) : 0;\n  }\n\n  // Giữ đúng 10 cột cho tab BaoCao\n  baoCaoItems.push({\n    json: {\n      'Số phiếu sửa chữa': row['Số phiếu sửa chữa'] || '',\n      'Mã vật tư linh kiện': row['Mã vật tư linh kiện'] || '',\n      'Tên vật tư': row['Tên vật tư'] || '',\n      'Đơn giá': row['Đơn giá'] !== null && row['Đơn giá'] !== undefined ? parseFloat(row['Đơn giá']) : null,\n      'Doanh thu tiền mặt': cashVal,\n      'Công nợ': debtVal,\n      'Khách hàng': row['Khách hàng'] || '',\n      'Phương thức thanh toán': row['Phương thức thanh toán'] || '',\n      'Xuất Bảo Hành': (row['Xuất Bảo Hành'] === 1 || row['Xuất Bảo Hành'] === '1') ? 1 : '',\n      'Xuất Sửa Chữa': (row['Xuất Sửa Chữa'] === 1 || row['Xuất Sửa Chữa'] === '1') ? 1 : ''\n    }\n  });\n}\n\nreturn baoCaoItems;\n"
+      },
+      "id": "node-map-10-columns",
+      "name": "Remove metadata - Map 10 columns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "sheetId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "mode": "id"
+        },
+        "range": "BaoCao!A2:J10000"
+      },
+      "id": "node-clear-baocao",
+      "name": "Clear old BaoCao data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1080,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "mode": "id"
+        },
+        "range": "BaoCao!A:J",
+        "options": {}
+      },
+      "id": "node-append-baocao",
+      "name": "Append to BaoCao",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1300,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  JSON.stringify({\n    success: true,\n    exportedRows: $('Remove metadata - Map 10 columns').all().length,\n    targetSheet: 'BaoCao',\n    center_code: $('Webhook').first().json.body?.center_code || $('Webhook').first().json.center_code,\n    report_date: $('Webhook').first().json.body?.report_date || $('Webhook').first().json.report_date\n  })\n}}"
+      },
+      "id": "node-respond-export",
+      "name": "Respond Export Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Secret": {
+      "main": [
+        [
+          {
+            "node": "Get Rows DATA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Rows DATA": {
+      "main": [
+        [
+          {
+            "node": "Remove metadata - Map 10 columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove metadata - Map 10 columns": {
+      "main": [
+        [
+          {
+            "node": "Clear old BaoCao data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear old BaoCao data": {
+      "main": [
+        [
+          {
+            "node": "Append to BaoCao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to BaoCao": {
+      "main": [
+        [
+          {
+            "node": "Respond Export Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

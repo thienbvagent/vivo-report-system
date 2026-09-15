@@ -1,0 +1,190 @@
+{
+  "name": "Vivo Report - Import Excel",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vivo-report-import",
+        "options": {}
+      },
+      "id": "node-webhook-import",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "vivo-report-import"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $headers['x-workflow-secret'] }}",
+              "value2": "VivoSecretKey@2026"
+            }
+          ]
+        }
+      },
+      "id": "node-verify-secret",
+      "name": "Verify X-Workflow-Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "spreadsheetFile",
+        "binaryPropertyName": "file",
+        "options": {
+          "readAsString": true
+        }
+      },
+      "id": "node-extract-file",
+      "name": "Extract From File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        640,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy parameters từ webhook request\nconst body = $('Webhook').first().json.body || $('Webhook').first().json;\nconst expectedCenterCode = (body.center_code || '').trim().toUpperCase();\nconst expectedCenterName = (body.center_name || '').trim();\nconst uploadId = (body.upload_id || '').trim();\n\nfunction normalizeText(val) {\n  if (val === null || val === undefined) return '';\n  return String(val).trim().replace(/^\\uFEFF/, '').normalize('NFC');\n}\n\nfunction parseMoneyPreserveNull(val) {\n  if (val === null || val === undefined) return null;\n  const s = String(val).trim();\n  if (s === '') return null;\n  const cleaned = s.replace(/[^0-9.-]+/g, '');\n  if (cleaned === '' || cleaned === '-' || cleaned === '.') return null;\n  const num = parseFloat(cleaned);\n  return isNaN(num) ? null : num;\n}\n\nconst REQUIRED_COLUMNS = [\n  'Mã tổ chức',\n  'Phiếu công tác sửa chữa',\n  'Loại hình đem đến sửa',\n  'Số điện thoại người đem đến sửa',\n  'Loại hình sửa chữa',\n  'Phương án giải quyết',\n  'Loại linh kiện',\n  'Mã linh kiện',\n  'Tên linh kiện',\n  'Số tiền phải thu',\n  'Số tiền thực thu',\n  'Thời gian lấy máy'\n];\n\nconst RAW_ALLOWED_SOLUTIONS = [\n  'Thay thế linh kiện và phụ kiện',\n  'Thay thế phụ kiện',\n  'Clean (disassemble the machine)'\n];\nconst ALLOWED_SOLUTIONS = new Set(RAW_ALLOWED_SOLUTIONS.map(s => normalizeText(s)));\n\nconst allItems = $input.all();\nconst inputRows = allItems.length;\n\nif (inputRows === 0) {\n  return [{\n    json: {\n      success: false,\n      error: 'File Excel không có dữ liệu.',\n      inputRows: 0\n    }\n  }];\n}\n\n// 1. Dò tìm header linh hoạt theo tên chuẩn hóa NFC\nconst allKeys = new Set();\nconst scanLimit = Math.min(inputRows, 50);\nfor (let i = 0; i < scanLimit; i++) {\n  for (const k of Object.keys(allItems[i].json)) {\n    allKeys.add(k);\n  }\n}\n\nconst columnMap = {};\nfor (const reqCol of REQUIRED_COLUMNS) {\n  const normReq = normalizeText(reqCol).toLowerCase();\n  let found = null;\n  for (const k of allKeys) {\n    if (normalizeText(k).toLowerCase() === normReq) {\n      found = k;\n      break;\n    }\n  }\n  if (!found) {\n    return [{\n      json: {\n        success: false,\n        error: 'Không tìm thấy cột bắt buộc: ' + reqCol,\n        inputRows\n      }\n    }];\n  }\n  columnMap[reqCol] = found;\n}\n\nconst colToChuc = columnMap['Mã tổ chức'];\nconst colPhieu = columnMap['Phiếu công tác sửa chữa'];\nconst colLoaiHinh = columnMap['Loại hình đem đến sửa'];\nconst colPhone = columnMap['Số điện thoại người đem đến sửa'];\nconst colLoaiSc = columnMap['Loại hình sửa chữa'];\nconst colPhuongAn = columnMap['Phương án giải quyết'];\nconst colLoaiLk = columnMap['Loại linh kiện'];\nconst colMaLk = columnMap['Mã linh kiện'];\nconst colTenLk = columnMap['Tên linh kiện'];\nconst colPhaiThu = columnMap['Số tiền phải thu'];\nconst colThucThu = columnMap['Số tiền thực thu'];\nconst colTgLay = columnMap['Thời gian lấy máy'];\n\nlet colGiaBanLe = null;\nconst normGiaBanLe = normalizeText('Giá bán lẻ đề nghị').toLowerCase();\nfor (const k of allKeys) {\n  if (normalizeText(k).toLowerCase() === normGiaBanLe) {\n    colGiaBanLe = k;\n    break;\n  }\n}\n\n// 2. Validate Mã tổ chức\nconst detectedCenters = new Set();\nfor (const it of allItems) {\n  const c = normalizeText(it.json[colToChuc]);\n  if (c) detectedCenters.add(c);\n}\n\nif (detectedCenters.size > 1) {\n  return [{\n    json: {\n      success: false,\n      error: 'File Excel chứa nhiều Mã tổ chức khác nhau (' + Array.from(detectedCenters).join(', ') + ').',\n      inputRows\n    }\n  }];\n}\n\nconst fileCenterCode = Array.from(detectedCenters)[0] || '';\nif (expectedCenterCode && fileCenterCode !== expectedCenterCode) {\n  return [{\n    json: {\n      success: false,\n      error: 'File không thuộc TTBH đang đăng nhập. File: ' + fileCenterCode + ', Đăng nhập: ' + expectedCenterCode,\n      inputRows\n    }\n  }];\n}\n\nconst itemsToAppend = [];\nlet filteredBySolution = 0;\nlet warningRows = 0;\n\nfor (let idx = 0; idx < inputRows; idx++) {\n  const row = allItems[idx].json;\n  const sourceRowNumber = idx + 2;\n\n    // Parse và validate Thời gian lấy máy\n  const rawPickup = row[colTgLay];\n  const pickupTime = normalizeText(rawPickup);\n  if (!pickupTime) {\n    warningRows++;\n    continue;\n  }\n  const dateMatch = pickupTime.match(/^(\\d{4}-\\d{2}-\\d{2})/);\n  if (!dateMatch) {\n    warningRows++;\n    continue;\n  }\n  const reportDate = dateMatch[1];\n\n  // Kiểm tra Linh kiện (Phương án 1):\n  // Cứ dòng nào có phát sinh Mã linh kiện HOẶC Tên linh kiện thì lấy vào báo cáo (bất kể Phương án giải quyết)\n  // Nếu cả 2 đều trống thì bỏ qua\n  const partCode = normalizeText(row[colMaLk]);\n  const partName = normalizeText(row[colTenLk]);\n  if (!partCode && !partName) {\n    filteredBySolution++;\n    continue;\n  }\n\n  const solution = normalizeText(row[colPhuongAn]);\n\n  // Phân loại Khách hàng & Phương thức thanh toán\n  const bringType = normalizeText(row[colLoaiHinh]);\n  const phone = normalizeText(row[colPhone]);\n  const repairCategory = normalizeText(row[colLoaiSc]);\n\n  const isDemo = bringType === normalizeText('Máy demo được gửi đi sửa chữa');\n  const isChainTgdd = bringType === normalizeText('Kênh chuỗi gửi sửa') && (phone.startsWith('+84 190') || phone.startsWith('+84 109') || phone.endsWith('464') || phone.endsWith('460'));\n  const isTgdd = isDemo || isChainTgdd;\n\n  const customer = isTgdd ? 'TGDĐ' : 'KL';\n  const paymentMethod = isTgdd ? 'CN' : 'TM';\n\n  // Xác định Đơn giá: Phương án 2 (Ưu tiên Giá bán lẻ đề nghị, fallback sang Số tiền phải thu)\n  const retailPrice = colGiaBanLe ? parseMoneyPreserveNull(row[colGiaBanLe]) : null;\n  const phaiThuPrice = parseMoneyPreserveNull(row[colPhaiThu]);\n  const unitPrice = retailPrice !== null ? retailPrice : phaiThuPrice;\n  const actualPrice = parseMoneyPreserveNull(row[colThucThu]);\n\n  let cashRevenue = null;\n  let receivable = null;\n  if (unitPrice !== null) {\n    const effectiveActual = actualPrice !== null ? actualPrice : 0;\n    if (customer === 'TGDĐ') {\n      cashRevenue = 0;\n      receivable = effectiveActual;\n    } else {\n      cashRevenue = effectiveActual;\n      receivable = 0;\n    }\n  }\n  const partType = normalizeText(row[colLoaiLk]);\n  let warrantyExport = '';\n  let repairExport = '';\n\n  const isBaoHanhPlusSuaChua = repairCategory.includes(normalizeText('Bảo hành + Sửa chữa')) ||\n                               repairCategory.includes(normalizeText('Bảo hành + Sửa chữa'));\n\n  if (isBaoHanhPlusSuaChua) {\n    if (partType === normalizeText('Sửa chữa')) {\n      repairExport = 1;\n      warrantyExport = '';\n    } else if (partType === normalizeText('Bảo hành') || partType === normalizeText('Bảo hành')) {\n      warrantyExport = 1;\n      repairExport = '';\n    }\n  } else {\n    if (partType === normalizeText('Sửa chữa')) {\n      repairExport = 1;\n      warrantyExport = '';\n    } else if (partType === normalizeText('Bảo hành') || partType === normalizeText('Bảo hành')) {\n      warrantyExport = 1;\n      repairExport = '';\n    }\n  }\n\n  itemsToAppend.push({\n    json: {\n      'Mã TTBH': fileCenterCode,\n      'Tên TTBH': expectedCenterName || fileCenterCode,\n      'Ngày báo cáo': reportDate,\n      'Thời gian lấy máy': pickupTime,\n      'Số phiếu sửa chữa': normalizeText(row[colPhieu]),\n      'Mã vật tư linh kiện': normalizeText(row[colMaLk]),\n      'Tên vật tư': normalizeText(row[colTenLk]),\n      'Đơn giá': unitPrice,\n      'Doanh thu tiền mặt': cashRevenue,\n      'Công nợ': receivable,\n      'Khách hàng': customer,\n      'Phương thức thanh toán': paymentMethod,\n      'Xuất Bảo Hành': warrantyExport,\n      'Xuất Sửa Chữa': repairExport,\n      'Loại hình đem đến sửa': bringType,\n      'Loại hình sửa chữa': repairCategory,\n      'Loại linh kiện': partType,\n      'Phương án giải quyết': solution,\n      'Upload ID': uploadId,\n      'Source Row Number': sourceRowNumber\n    }\n  });\n}\n\n// Hậu kiểm và ghi đè kết quả hoàn chỉnh (Final Pass Safeguard):\n// Check lại thêm 1 lần nữa: nếu Khách hàng là TGDĐ VÀ cả Loại hình sửa chữa lẫn Loại linh kiện đều là Bảo hành\n// -> Bắt buộc ghi đè Công nợ = 0 (chỉ riêng đối với TGDĐ) trước khi xuất bản hoàn chỉnh.\nfor (const it of itemsToAppend) {\n  const r = it.json;\n  const isTgdd = r['Khách hàng'] === 'TGDĐ';\n  const isRepairWarranty = normalizeText(r['Loại hình sửa chữa']).toLowerCase() === normalizeText('Bảo hành').toLowerCase();\n  const isPartWarranty = normalizeText(r['Loại linh kiện']).toLowerCase() === normalizeText('Bảo hành').toLowerCase();\n\n  if (isTgdd && isRepairWarranty && isPartWarranty) {\n    r['Công nợ'] = 0;\n  }\n}\n\nreturn itemsToAppend;\n"
+      },
+      "id": "node-transform-data",
+      "name": "Code - Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "mode": "id"
+        },
+        "range": "DATA!A:S",
+        "options": {}
+      },
+      "id": "node-append-data",
+      "name": "Append DATA Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1080,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  JSON.stringify({\n    success: true,\n    center: {\n      code: $('Code - Transform Data').first().json['Mã TTBH'],\n      name: $('Code - Transform Data').first().json['Tên TTBH']\n    },\n    inputRows: $('Extract From File').all().length,\n    validRows: $('Code - Transform Data').all().length,\n    tgddRows: $('Code - Transform Data').all().filter(i => i.json['Khách hàng'] === 'TGDĐ').length,\n    klRows: $('Code - Transform Data').all().filter(i => i.json['Khách hàng'] === 'KL').length,\n    totalWarrantyExport: $('Code - Transform Data').all().reduce((acc, i) => acc + (i.json['Xuất Bảo Hành'] || 0), 0),\n    totalRepairExport: $('Code - Transform Data').all().reduce((acc, i) => acc + (i.json['Xuất Sửa Chữa'] || 0), 0),\n    latestReportDate: $('Code - Transform Data').first().json['Ngày báo cáo']\n  })\n}}"
+      },
+      "id": "node-respond-success",
+      "name": "Respond Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1300,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 401,
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unauthorized: Invalid X-Workflow-Secret' }) }}"
+      },
+      "id": "node-respond-unauthorized",
+      "name": "Respond Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify X-Workflow-Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify X-Workflow-Secret": {
+      "main": [
+        [
+          {
+            "node": "Extract From File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract From File": {
+      "main": [
+        [
+          {
+            "node": "Code - Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Append DATA Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append DATA Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Respond Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

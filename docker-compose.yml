@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  vivo-report-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vivo-report-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - N8N_BASE_URL=https://n8n.pdarc.space
+      - N8N_WORKFLOW_SECRET=VivoSecretKey@2026
+      - N8N_IMPORT_WEBHOOK_PATH=/webhook/vivo-report-import
+      - N8N_QUERY_WEBHOOK_PATH=/webhook/vivo-report-query
+      - N8N_EXPORT_WEBHOOK_PATH=/webhook/vivo-report-export
+      - JWT_SECRET=vivo-jwt-super-secret-key-production-2026
+      - DB_DIR=/app/.data
+    volumes:
+      - vivo_data:/app/.data
+
+volumes:
+  vivo_data:
+    driver: local

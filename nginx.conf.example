@@ -1,0 +1,40 @@
+# Nginx Reverse Proxy Configuration cho Web Tool Báo Cáo Vivo
+# Đặt cấu hình này vào /etc/nginx/sites-available/vivo-report.conf
+# Và symlink sang /etc/nginx/sites-enabled/
+
+server {
+    listen 80;
+    server_name vivo-report.yourdomain.com; # Thay thế bằng domain của bạn
+
+    # Tự động redirect sang HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name vivo-report.yourdomain.com; # Thay thế bằng domain của bạn
+
+    # Cấu hình chứng chỉ SSL (Let's Encrypt / Certbot)
+    # ssl_certificate /etc/letsencrypt/live/vivo-report.yourdomain.com/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/vivo-report.yourdomain.com/privkey.pem;
+
+    client_max_body_size 50M; # Cho phép upload file Excel dung lượng lớn
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeout cho việc upload và xử lý file lớn
+        proxy_connect_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+}
