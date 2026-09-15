@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.github
+.data
+.env
+.env.*
+!.env.example
+*.xlsx
+*.xls
+*.log
+coverage
+test.txt

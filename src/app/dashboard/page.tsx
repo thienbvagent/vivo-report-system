@@ -190,7 +190,8 @@ export default function DashboardPage() {
           report_date: selectedDate,
           sheet_url: googleSheetUrl.trim(),
           spreadsheet_id: extractSheetId(googleSheetUrl),
-          target_sheet: 'BaoCao',
+          target_sheet: targetMonthYear,
+          targetSheet: targetMonthYear,
           items: exportItems
         })
       });
@@ -199,12 +200,12 @@ export default function DashboardPage() {
       if (data.success) {
         setExportNotice({
           type: 'success',
-          message: data.message || `Đã gửi thành công ${exportItems.length} dòng sang Google Sheets!`
+          message: data.message || `Đã gửi thành công ${exportItems.length} dòng sang Google Sheets (Tab: ${targetMonthYear})!`
         });
       } else {
         setExportNotice({
           type: 'error',
-          message: `${data.error || 'Xuất thất bại.'} — Lưu ý: 1) Bảng tính Google Sheet cần có tab tên chính xác là "BaoCao"; 2) Cần bấm "Chia sẻ" và cấp quyền "Người chỉnh sửa" (Editor) cho email Google liên kết trong n8n.`
+          message: data.error || 'Xuất thất bại. Vui lòng kiểm tra quyền chia sẻ bảng tính trên Google Sheets.'
         });
       }
     } catch (err: any) {
@@ -271,7 +272,7 @@ export default function DashboardPage() {
               <span className="hidden sm:inline">Làm Sạch Dữ Liệu</span>
             </button>
 
-            {/* Export BaoCao Button */}
+            {/* Export Google Sheets Button */}
             <button
               onClick={handleExportGoogleSheets}
               disabled={exporting || rows.length === 0 || selectedDate === 'ALL'}
@@ -279,7 +280,7 @@ export default function DashboardPage() {
               title="Xuất dữ liệu ngày đang chọn sang Google Sheets qua n8n"
             >
               <Download className="w-4 h-4" />
-              <span>{exporting ? 'Đang xuất BaoCao...' : 'Xuất Tab BaoCao'}</span>
+              <span>{exporting ? 'Đang xuất...' : 'Xuất Google Sheets'}</span>
             </button>
 
             {/* Download Excel File Button */}

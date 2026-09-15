@@ -8,7 +8,7 @@ import { SERVICE_CENTERS } from '@/lib/centers';
 export default function LoginPage() {
   const router = useRouter();
   const [selectedCenter, setSelectedCenter] = useState('R4001003');
-  const [password, setPassword] = useState('Vivo@2026');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
               required
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
             />
-            <p className="text-xs text-slate-400 mt-1">Mật khẩu mặc định ban đầu: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono">Vivo@2026</code></p>
+            <p className="text-xs text-slate-400 mt-1">Nhập mật khẩu được quản trị viên cấp cho trung tâm.</p>
           </div>
 
           <button

@@ -1,13 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { getAllCenters } from './centers';
 import { ProcessedReportItem } from './business-rules';
 
-const DATA_DIR = path.join(process.cwd(), '.data');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const UPLOADS_FILE = path.join(DATA_DIR, 'uploads.json');
-const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
+function getDataDir(): string {
+  return path.resolve(/* turbopackIgnore: true */ process.env.DB_DIR || path.join(process.cwd(), '.data'));
+}
+
+function getDataFile(name: 'users.json' | 'uploads.json' | 'reports.json'): string {
+  return path.join(getDataDir(), name);
+}
 
 export interface StoredUser {
   centerCode: string;
@@ -25,48 +29,79 @@ export interface UploadRecord {
   inputRows: number;
   validRows: number;
   warningRows: number;
-  status: 'SUCCESS' | 'FAILED';
+  status: 'SUCCESS' | 'LOCAL_ONLY' | 'NO_DATA' | 'FAILED';
+}
+
+function writeJsonAtomic(filePath: string, value: unknown) {
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(value, null, 2), 'utf-8');
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
+  }
+}
+
+function reportKey(item: ProcessedReportItem): string {
+  const centerCode = String(item['Mã TTBH'] || '').trim().toUpperCase();
+  const ticket = String(item['Số phiếu sửa chữa'] || '').trim();
+  const partCode = String(item['Mã vật tư linh kiện'] || '').trim();
+  const partName = String(item['Tên vật tư'] || '').trim().toLowerCase();
+
+  // Thời gian lấy máy là dữ liệu có thể được chỉnh sửa ở file sau nên không dùng làm khóa upsert.
+  // Ưu tiên mã linh kiện; chỉ dùng tên khi file không có mã.
+  return [centerCode, ticket, partCode || `name:${partName}`].join('\u001f');
 }
 
 function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  const dataDir = getDataDir();
+  if (!fs.existsSync(/* turbopackIgnore: true */ dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
 }
 
 export function initDatabase() {
   ensureDir();
+  const usersFile = getDataFile('users.json');
+  const uploadsFile = getDataFile('uploads.json');
+  const reportsFile = getDataFile('reports.json');
 
-  // Seed 15 accounts with Vivo@2026 if not existing
-  if (!fs.existsSync(USERS_FILE)) {
-    const defaultHash = bcrypt.hashSync('Vivo@2026', 10);
+  // Seed 15 accounts bằng mật khẩu khởi tạo từ môi trường nếu chưa có database.
+  if (!fs.existsSync(usersFile)) {
+    const initialPassword = process.env.INITIAL_CENTER_PASSWORD;
+    if (!initialPassword) {
+      throw new Error('Thiếu biến môi trường INITIAL_CENTER_PASSWORD để khởi tạo tài khoản TTBH.');
+    }
+    const defaultHash = bcrypt.hashSync(initialPassword, 10);
     const users: StoredUser[] = getAllCenters().map(c => ({
       centerCode: c.code,
       centerName: c.name,
       passwordHash: defaultHash,
       createdAt: new Date().toISOString()
     }));
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    writeJsonAtomic(usersFile, users);
   }
 
-  if (!fs.existsSync(UPLOADS_FILE)) {
-    fs.writeFileSync(UPLOADS_FILE, JSON.stringify([], null, 2), 'utf-8');
+  if (!fs.existsSync(uploadsFile)) {
+    writeJsonAtomic(uploadsFile, []);
   }
 
-  if (!fs.existsSync(REPORTS_FILE)) {
-    fs.writeFileSync(REPORTS_FILE, JSON.stringify([], null, 2), 'utf-8');
+  if (!fs.existsSync(reportsFile)) {
+    writeJsonAtomic(reportsFile, []);
   }
 }
 
 export function findUserByCode(code: string): StoredUser | null {
   initDatabase();
-  const users: StoredUser[] = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+  const users: StoredUser[] = JSON.parse(fs.readFileSync(getDataFile('users.json'), 'utf-8'));
   return users.find(u => u.centerCode === code) || null;
 }
 
 export function getUploads(centerCode?: string): UploadRecord[] {
   initDatabase();
-  const records: UploadRecord[] = JSON.parse(fs.readFileSync(UPLOADS_FILE, 'utf-8'));
+  const records: UploadRecord[] = JSON.parse(fs.readFileSync(getDataFile('uploads.json'), 'utf-8'));
   if (centerCode) {
     return records.filter(r => r.centerCode === centerCode);
   }
@@ -82,7 +117,7 @@ export function saveUploadRecord(record: UploadRecord) {
   initDatabase();
   const records = getUploads();
   records.unshift(record);
-  fs.writeFileSync(UPLOADS_FILE, JSON.stringify(records, null, 2), 'utf-8');
+  writeJsonAtomic(getDataFile('uploads.json'), records);
 }
 
 export function saveReportItems(
@@ -90,26 +125,29 @@ export function saveReportItems(
   mode: 'upsert' | 'replace_center' = 'upsert'
 ): { inserted: number; updated: number } {
   initDatabase();
-  let existing: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  const reportsFile = getDataFile('reports.json');
+  let existing: ProcessedReportItem[] = JSON.parse(fs.readFileSync(reportsFile, 'utf-8'));
   let inserted = 0;
   let updated = 0;
 
   if (mode === 'replace_center' && items.length > 0) {
     const centerCode = items[0]['Mã TTBH'];
+    if (items.some(item => item['Mã TTBH'] !== centerCode)) {
+      throw new Error('Không thể ghi đè dữ liệu của nhiều TTBH trong cùng một lần tải lên.');
+    }
     // Xóa toàn bộ dữ liệu của TTBH này để thay thế bằng dữ liệu từ file mới
     existing = existing.filter(i => i['Mã TTBH'] !== centerCode);
     existing.push(...items);
     inserted = items.length;
   } else {
-    // Upsert: Dò tìm theo số phiếu + mã LK + thời gian lấy máy
+    // Upsert: Dò theo TTBH + số phiếu + mã linh kiện (hoặc tên nếu thiếu mã).
     const indexMap = new Map<string, number>();
     existing.forEach((item, idx) => {
-      const key = `${item['Số phiếu sửa chữa']}_${item['Mã vật tư linh kiện']}_${item['Thời gian lấy máy']}`;
-      indexMap.set(key, idx);
+      indexMap.set(reportKey(item), idx);
     });
 
     for (const item of items) {
-      const key = `${item['Số phiếu sửa chữa']}_${item['Mã vật tư linh kiện']}_${item['Thời gian lấy máy']}`;
+      const key = reportKey(item);
       if (indexMap.has(key)) {
         const existingIdx = indexMap.get(key)!;
         existing[existingIdx] = { ...existing[existingIdx], ...item };
@@ -122,24 +160,26 @@ export function saveReportItems(
     }
   }
 
-  fs.writeFileSync(REPORTS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+  writeJsonAtomic(reportsFile, existing);
   return { inserted, updated };
 }
 
 export function clearCenterData(centerCode: string) {
   initDatabase();
-  const existingReports: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  const reportsFile = getDataFile('reports.json');
+  const uploadsFile = getDataFile('uploads.json');
+  const existingReports: ProcessedReportItem[] = JSON.parse(fs.readFileSync(reportsFile, 'utf-8'));
   const filteredReports = existingReports.filter(i => i['Mã TTBH'] !== centerCode);
-  fs.writeFileSync(REPORTS_FILE, JSON.stringify(filteredReports, null, 2), 'utf-8');
+  writeJsonAtomic(reportsFile, filteredReports);
 
-  const existingUploads: UploadRecord[] = JSON.parse(fs.readFileSync(UPLOADS_FILE, 'utf-8'));
+  const existingUploads: UploadRecord[] = JSON.parse(fs.readFileSync(uploadsFile, 'utf-8'));
   const filteredUploads = existingUploads.filter(u => u.centerCode !== centerCode);
-  fs.writeFileSync(UPLOADS_FILE, JSON.stringify(filteredUploads, null, 2), 'utf-8');
+  writeJsonAtomic(uploadsFile, filteredUploads);
 }
 
 export function getReportItems(centerCode: string, reportDate?: string): ProcessedReportItem[] {
   initDatabase();
-  const items: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  const items: ProcessedReportItem[] = JSON.parse(fs.readFileSync(getDataFile('reports.json'), 'utf-8'));
   return items.filter(i => {
     if (i['Mã TTBH'] !== centerCode) return false;
     if (reportDate && reportDate.toUpperCase() !== 'ALL' && i['Ngày báo cáo'] !== reportDate) return false;
@@ -149,7 +189,7 @@ export function getReportItems(centerCode: string, reportDate?: string): Process
 
 export function getAvailableDates(centerCode: string): string[] {
   initDatabase();
-  const items: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  const items: ProcessedReportItem[] = JSON.parse(fs.readFileSync(getDataFile('reports.json'), 'utf-8'));
   const dates = new Set<string>();
   for (const i of items) {
     if (i['Mã TTBH'] === centerCode && i['Ngày báo cáo']) {

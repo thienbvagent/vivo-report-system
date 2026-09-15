@@ -113,7 +113,7 @@ export default function UploadsPage() {
                   {file ? file.name : 'Bấm vào đây để chọn file Excel hoặc kéo thả file'}
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
-                  Định dạng hỗ trợ: .xlsx, .xls (Báo cáo truy vấn chi tiết phiếu công tác sửa chữa có chi tiết linh kiện)
+                  Định dạng hỗ trợ: .xlsx, .xls, tối đa 25 MB (báo cáo có chi tiết linh kiện)
                 </div>
               </label>
             </div>
@@ -195,6 +195,13 @@ export default function UploadsPage() {
                   <div className="bg-amber-100/60 p-2.5 rounded-lg mt-2 text-xs text-amber-950">
                     💡 <strong>Cách xử lý:</strong> Khi xuất báo cáo từ hệ thống Vivo (DMS/CRM), quý khách vui lòng chọn xuất <strong>"Chi tiết linh kiện"</strong> để file có đầy đủ các cột <em>Mã linh kiện, Tên linh kiện, Đơn giá</em>. Khi tải file chi tiết đó lên, hệ thống sẽ tự động cập nhật ngay.
                   </div>
+                </div>
+              )}
+
+              {result.n8nStatus === 'FAILED_N8N' && (
+                <div className="mb-4 p-4 bg-amber-100 border border-amber-300 rounded-xl text-xs sm:text-sm text-amber-950">
+                  <strong>Dữ liệu đã được cập nhật trên hệ thống web nhưng chưa đồng bộ sang n8n/Google Sheets.</strong>
+                  <div className="mt-1 break-words">{result.n8nError || 'Không nhận được xác nhận từ n8n.'}</div>
                 </div>
               )}
 

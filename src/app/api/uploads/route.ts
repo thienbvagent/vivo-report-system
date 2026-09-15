@@ -6,6 +6,20 @@ import { forwardImportToN8n } from '@/lib/n8n-client';
 import { transformExcelRows, RawExcelRow } from '@/lib/business-rules';
 import { readExcelBuffer, fixZip64Buffer } from '@/lib/excel-parser';
 import * as XLSX from 'xlsx';
+import { randomUUID } from 'crypto';
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+function hasExcelSignature(buffer: Buffer): boolean {
+  const isZip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && (
+    (buffer[2] === 0x03 && buffer[3] === 0x04) ||
+    (buffer[2] === 0x05 && buffer[3] === 0x06) ||
+    (buffer[2] === 0x07 && buffer[3] === 0x08)
+  );
+  const oleSignature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+  const isLegacyXls = buffer.length >= oleSignature.length && oleSignature.every((byte, index) => buffer[index] === byte);
+  return isZip || isLegacyXls;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,8 +35,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Vui lòng chọn file Excel để tải lên.' }, { status: 400 });
     }
 
+    if (!/\.(xlsx|xls)$/i.test(file.name)) {
+      return NextResponse.json({ success: false, error: 'Chỉ hỗ trợ file Excel định dạng .xlsx hoặc .xls.' }, { status: 400 });
+    }
+    if (file.size === 0) {
+      return NextResponse.json({ success: false, error: 'File Excel đang trống.' }, { status: 400 });
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ success: false, error: 'File Excel vượt quá giới hạn 25 MB.' }, { status: 413 });
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const rawBuffer = Buffer.from(arrayBuffer);
+    if (!hasExcelSignature(rawBuffer)) {
+      return NextResponse.json({ success: false, error: 'Nội dung file không đúng định dạng Excel.' }, { status: 400 });
+    }
     const buffer = fixZip64Buffer(rawBuffer);
 
     // 2. Chống upload trùng file qua SHA-256
@@ -36,7 +63,7 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    const uploadId = `UPL_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const uploadId = `UPL_${Date.now()}_${randomUUID().slice(0, 8).toUpperCase()}`;
 
     // 3. Phân tích nội bộ để kiểm tra tính hợp lệ & lưu trữ (hỗ trợ Zip64 chống lỗi Failed to allocate memory)
     let localRows: RawExcelRow[] = [];
@@ -56,43 +83,60 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 4. Chuyển tiếp sang n8n Webhook
-    let n8nStatus = 'SKIPPED';
-    try {
-      const n8nRes = await forwardImportToN8n(
-        buffer,
-        file.name,
-        session.centerCode,
-        session.centerName,
-        uploadId
-      );
-      if (n8nRes.success) {
-        n8nStatus = 'SYNCED_N8N';
-      }
-    } catch (n8nErr) {
-      console.warn('Cảnh báo n8n:', n8nErr);
-    }
-
-    // 5. Lưu vào Database cục bộ
+    // 4. Lưu/cập nhật dữ liệu cục bộ trước, sau đó mới đồng bộ n8n.
     const mode = (formData.get('mode') as string) === 'replace' ? 'replace_center' : 'upsert';
+    const importTime = new Date().toISOString();
+    const reportItems = transformResult.items.map(item => ({
+      ...item,
+      'Upload ID': uploadId,
+      'Thời gian import': importTime
+    }));
+
+    const { inserted, updated } = transformResult.validRows > 0
+      ? saveReportItems(reportItems, mode)
+      : { inserted: 0, updated: 0 };
+
+    // 5. Đồng bộ n8n chỉ khi file có dữ liệu linh kiện hợp lệ.
+    let n8nStatus: 'SYNCED_N8N' | 'FAILED_N8N' | 'NOT_ATTEMPTED_NO_DATA' = 'NOT_ATTEMPTED_NO_DATA';
+    let n8nError: string | null = null;
+    if (transformResult.validRows > 0) {
+      try {
+        const n8nRes = await forwardImportToN8n(
+          buffer,
+          file.name,
+          session.centerCode,
+          session.centerName,
+          uploadId
+        );
+        if (n8nRes.success) {
+          n8nStatus = 'SYNCED_N8N';
+        } else {
+          n8nStatus = 'FAILED_N8N';
+          n8nError = n8nRes.error || 'n8n không xác nhận đồng bộ thành công.';
+        }
+      } catch (n8nErr: any) {
+        n8nStatus = 'FAILED_N8N';
+        n8nError = n8nErr.message || 'Không thể kết nối tới n8n.';
+      }
+    }
 
     saveUploadRecord({
       uploadId,
       centerCode: session.centerCode,
       fileName: file.name,
       fileHash,
-      uploadTime: new Date().toISOString(),
+      uploadTime: importTime,
       inputRows: transformResult.inputRows,
       validRows: transformResult.validRows,
       warningRows: transformResult.warningRows,
-      status: 'SUCCESS'
+      status: transformResult.validRows === 0
+        ? 'NO_DATA'
+        : n8nStatus === 'SYNCED_N8N' ? 'SUCCESS' : 'LOCAL_ONLY'
     });
-
-    const { inserted, updated } = saveReportItems(transformResult.items, mode);
 
     let zeroNotice = null;
     if (transformResult.validRows === 0) {
-      zeroNotice = `File chứa ${transformResult.inputRows} dòng nhưng toàn bộ 106 dòng đều trống cột "Mã linh kiện" và "Tên linh kiện" (đây là file xuất ở cấp độ tổng hợp phiếu, chưa tích chọn xuất chi tiết linh kiện). Do đó hệ thống không có dữ liệu linh kiện mới nào để thêm vào báo cáo. Báo cáo hiện tại vẫn hiển thị dữ liệu của lần tải lên trước đó.`;
+      zeroNotice = `File chứa ${transformResult.inputRows} dòng nhưng không có dòng linh kiện hợp lệ: ${transformResult.filteredBySolution} dòng không có Mã/Tên linh kiện và ${transformResult.warningRows} dòng thiếu hoặc sai Thời gian lấy máy. Báo cáo hiện tại được giữ nguyên.`;
     }
 
     return NextResponse.json({
@@ -104,6 +148,7 @@ export async function POST(req: NextRequest) {
       warningRows: transformResult.warningRows,
       insertedRows: inserted,
       updatedRows: updated,
+      dataChanged: inserted + updated > 0,
       mode,
       zeroNotice,
       tgddRows: transformResult.tgddRows,
@@ -116,7 +161,8 @@ export async function POST(req: NextRequest) {
       availableReportDates: transformResult.availableReportDates,
       latestReportDate: transformResult.latestReportDate,
       uploadId,
-      n8nStatus
+      n8nStatus,
+      n8nError
     });
 
   } catch (err: any) {

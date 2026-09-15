@@ -5,24 +5,23 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start -p 3000",
-    "test": "node --import tsx tests/business-rules.test.ts"
+    "postbuild": "node scripts/prepare-standalone.mjs",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/server.js",
+    "test": "node --import tsx --test tests/business-rules.test.ts tests/db-storage.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
-    "cookie": "^0.6.0",
     "jose": "^5.9.3",
     "lucide-react": "^0.441.0",
-    "next": "14.2.15",
+    "next": "^16.3.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/cookie": "^0.6.0",
     "@types/node": "^20.16.5",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",

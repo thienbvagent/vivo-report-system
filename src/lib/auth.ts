@@ -4,9 +4,13 @@ import { cookies } from 'next/headers';
 import { getCenterName, isValidCenterCode } from './centers';
 import { findUserByCode, initDatabase } from './db-storage';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'vivo_cs_kh_jwt_session_secret_2026_super_secure_key_12345'
-);
+function getJwtSecret(): Uint8Array {
+  const value = process.env.SESSION_SECRET;
+  if (!value || value.length < 32) {
+    throw new Error('SESSION_SECRET phải được cấu hình và có ít nhất 32 ký tự.');
+  }
+  return new TextEncoder().encode(value);
+}
 
 export const AUTH_COOKIE_NAME = 'vivo_session_token';
 
@@ -29,12 +33,12 @@ export async function createSessionToken(centerCode: string): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifySessionToken(token: string): Promise<UserSession | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     const centerCode = payload.centerCode as string;
     const centerName = payload.centerName as string;
     if (!centerCode || !isValidCenterCode(centerCode)) {
@@ -48,7 +52,7 @@ export async function verifySessionToken(token: string): Promise<UserSession | n
 
 export async function getCurrentSession(): Promise<UserSession | null> {
   initDatabase();
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
   if (!token) return null;
   return verifySessionToken(token);

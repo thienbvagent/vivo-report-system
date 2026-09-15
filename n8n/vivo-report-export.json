@@ -11,10 +11,7 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        200,
-        300
-      ],
+      "position": [200, 300],
       "webhookId": "vivo-report-export"
     },
     {
@@ -22,8 +19,8 @@
         "conditions": {
           "string": [
             {
-              "value1": "={{ $headers['x-workflow-secret'] }}",
-              "value2": "VivoSecretKey@2026"
+              "value1": "={{ $('Webhook').first().json.headers['x-workflow-secret'] }}",
+              "value2": "={{ $env.N8N_WEBHOOK_SECRET }}"
             }
           ]
         }
@@ -32,68 +29,39 @@
       "name": "Verify Secret",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        420,
-        300
-      ]
+      "position": [420, 300]
     },
     {
       "parameters": {
-        "operation": "read",
-        "sheetId": {
-          "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
-          "mode": "id"
-        },
-        "range": "DATA!A:S",
-        "options": {}
+        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = String(req.center_code || '').trim().toUpperCase();\nconst reportDate = String(req.report_date || '').trim();\nconst spreadsheetId = String(req.spreadsheet_id || '').trim();\nconst targetSheet = String(req.target_sheet || 'BaoCao').trim();\n\nif (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) throw new Error('Spreadsheet ID không hợp lệ.');\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(reportDate)) throw new Error('Ngày báo cáo không hợp lệ.');\nif (targetSheet !== 'BaoCao') throw new Error('Chỉ cho phép xuất vào tab BaoCao.');\nif (!Array.isArray(req.items) || req.items.length === 0) throw new Error('Không có dữ liệu để xuất.');\n\nconst numberOrBlank = value => {\n  if (value === '' || value === null || value === undefined) return '';\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.round(parsed) : '';\n};\n\nconst rows = req.items\n  .filter(row => String(row['TTBH'] || '').trim().toUpperCase() === centerCode && String(row['Ngày'] || '').trim() === reportDate)\n  .map(row => ({\n    json: {\n      'Ngày': reportDate,\n      'Số phiếu sửa chữa': String(row['Số phiếu sửa chữa'] || ''),\n      'Mã vật tư linh kiện': String(row['Mã vật tư linh kiện'] || ''),\n      'Tên vật tư': String(row['Tên vật tư'] || ''),\n      'Xuất Bảo Hành': row['Xuất Bảo Hành'] === 1 || row['Xuất Bảo Hành'] === '1' ? 1 : '',\n      'Xuất Sửa Chữa': row['Xuất Sửa Chữa'] === 1 || row['Xuất Sửa Chữa'] === '1' ? 1 : '',\n      'Đơn giá': numberOrBlank(row['Đơn giá']),\n      'Doanh thu tiền mặt': numberOrBlank(row['Doanh thu tiền mặt']),\n      'Doanh thu tiền mặt trước thuế': numberOrBlank(row['Doanh thu tiền mặt trước thuế']),\n      'Công nợ': numberOrBlank(row['Công nợ']),\n      'CN sau chiết khấu': numberOrBlank(row['CN sau chiết khấu']),\n      'CN trước thuế': numberOrBlank(row['CN trước thuế']),\n      'Khách hàng': String(row['Khách hàng'] || ''),\n      'Phương thức thanh toán': String(row['Phương thức thanh toán'] || ''),\n      'TTBH': centerCode\n    }\n  }));\n\nif (rows.length === 0) throw new Error('Không còn dòng hợp lệ sau khi kiểm tra TTBH và ngày báo cáo.');\nreturn rows;"
       },
-      "id": "node-get-rows-for-export",
-      "name": "Get Rows DATA",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [
-        640,
-        200
-      ],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
-          "name": "Google Sheets Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = (req.center_code || '').trim().toUpperCase();\nconst reportDate = (req.report_date || '').trim();\n\nconst allRows = $input.all();\nconst baoCaoItems = [];\n\nfor (const it of allRows) {\n  const row = it.json;\n  const rowCenter = String(row['Mã TTBH'] || '').trim().toUpperCase();\n  const rowDate = String(row['Ngày báo cáo'] || '').trim();\n\n  // Chỉ lấy đúng center_code và report_date\n  if (rowCenter !== centerCode) continue;\n  if (rowDate !== reportDate) continue;\n\n  const isTgdd = row['Khách hàng'] === 'TGDĐ';\n  \n  // Quy chuẩn đối với TGDĐ vs KL:\n  // - Đối với TGDĐ: công nợ điền số 0 (nếu k phát sinh hoặc BH), tiền mặt để trống (không dùng tiền mặt)\n  // - Đối với KL: công nợ để trống (không tính KL trong công nợ), tiền mặt điền số tiền thực thu\n  let debtVal = '';\n  let cashVal = '';\n\n  if (isTgdd) {\n    debtVal = (row['Công nợ'] !== null && row['Công nợ'] !== undefined) ? parseFloat(row['Công nợ']) : 0;\n    cashVal = '';\n  } else {\n    debtVal = '';\n    cashVal = (row['Doanh thu tiền mặt'] !== null && row['Doanh thu tiền mặt'] !== undefined) ? parseFloat(row['Doanh thu tiền mặt']) : 0;\n  }\n\n  // Giữ đúng 10 cột cho tab BaoCao\n  baoCaoItems.push({\n    json: {\n      'Số phiếu sửa chữa': row['Số phiếu sửa chữa'] || '',\n      'Mã vật tư linh kiện': row['Mã vật tư linh kiện'] || '',\n      'Tên vật tư': row['Tên vật tư'] || '',\n      'Đơn giá': row['Đơn giá'] !== null && row['Đơn giá'] !== undefined ? parseFloat(row['Đơn giá']) : null,\n      'Doanh thu tiền mặt': cashVal,\n      'Công nợ': debtVal,\n      'Khách hàng': row['Khách hàng'] || '',\n      'Phương thức thanh toán': row['Phương thức thanh toán'] || '',\n      'Xuất Bảo Hành': (row['Xuất Bảo Hành'] === 1 || row['Xuất Bảo Hành'] === '1') ? 1 : '',\n      'Xuất Sửa Chữa': (row['Xuất Sửa Chữa'] === 1 || row['Xuất Sửa Chữa'] === '1') ? 1 : ''\n    }\n  });\n}\n\nreturn baoCaoItems;\n"
-      },
-      "id": "node-map-10-columns",
-      "name": "Remove metadata - Map 10 columns",
+      "id": "node-map-export-columns",
+      "name": "Validate and Map 15 Columns",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        860,
-        200
-      ]
+      "position": [640, 200]
     },
     {
       "parameters": {
         "operation": "clear",
-        "sheetId": {
+        "documentId": {
           "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "value": "={{ $('Webhook').first().json.body.spreadsheet_id }}",
           "mode": "id"
         },
-        "range": "BaoCao!A2:J10000"
+        "sheetName": {
+          "__rl": true,
+          "value": "BaoCao",
+          "mode": "name"
+        },
+        "clear": "wholeSheet",
+        "keepFirstRow": true
       },
       "id": "node-clear-baocao",
       "name": "Clear old BaoCao data",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [
-        1080,
-        200
-      ],
+      "position": [860, 200],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
@@ -104,22 +72,30 @@
     {
       "parameters": {
         "operation": "append",
-        "sheetId": {
+        "documentId": {
           "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "value": "={{ $('Webhook').first().json.body.spreadsheet_id }}",
           "mode": "id"
         },
-        "range": "BaoCao!A:J",
+        "sheetName": {
+          "__rl": true,
+          "value": "BaoCao",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
         "options": {}
       },
       "id": "node-append-baocao",
       "name": "Append to BaoCao",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [
-        1300,
-        200
-      ],
+      "position": [1080, 200],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
@@ -130,84 +106,47 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{\n  JSON.stringify({\n    success: true,\n    exportedRows: $('Remove metadata - Map 10 columns').all().length,\n    targetSheet: 'BaoCao',\n    center_code: $('Webhook').first().json.body?.center_code || $('Webhook').first().json.center_code,\n    report_date: $('Webhook').first().json.body?.report_date || $('Webhook').first().json.report_date\n  })\n}}"
+        "responseBody": "={{ JSON.stringify({ success: true, exportedRows: $('Validate and Map 15 Columns').all().length, targetSheet: 'BaoCao', spreadsheetId: $('Webhook').first().json.body.spreadsheet_id, center_code: $('Webhook').first().json.body.center_code, report_date: $('Webhook').first().json.body.report_date }) }}"
       },
       "id": "node-respond-export",
       "name": "Respond Export Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [
-        1520,
-        200
-      ]
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 401,
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unauthorized: Invalid X-Workflow-Secret' }) }}"
+      },
+      "id": "node-respond-unauthorized-export",
+      "name": "Respond Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [640, 400]
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Verify Secret",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Verify Secret", "type": "main", "index": 0}]]
     },
     "Verify Secret": {
       "main": [
-        [
-          {
-            "node": "Get Rows DATA",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Validate and Map 15 Columns", "type": "main", "index": 0}],
+        [{"node": "Respond Unauthorized", "type": "main", "index": 0}]
       ]
     },
-    "Get Rows DATA": {
-      "main": [
-        [
-          {
-            "node": "Remove metadata - Map 10 columns",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Remove metadata - Map 10 columns": {
-      "main": [
-        [
-          {
-            "node": "Clear old BaoCao data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Validate and Map 15 Columns": {
+      "main": [[{"node": "Clear old BaoCao data", "type": "main", "index": 0}]]
     },
     "Clear old BaoCao data": {
-      "main": [
-        [
-          {
-            "node": "Append to BaoCao",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Append to BaoCao", "type": "main", "index": 0}]]
     },
     "Append to BaoCao": {
-      "main": [
-        [
-          {
-            "node": "Respond Export Success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Respond Export Success", "type": "main", "index": 0}]]
     }
-  }
+  },
+  "active": false,
+  "settings": {}
 }

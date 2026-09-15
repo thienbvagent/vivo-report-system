@@ -107,7 +107,9 @@ export async function exportBaoCaoToN8n(
       center_code: centerCode, 
       report_date: reportDate,
       sheet_url: sheetUrl || '',
+      sheetUrl: sheetUrl || '',
       spreadsheet_id: spreadsheetId || '',
+      spreadsheetId: spreadsheetId || '',
       targetSheet: sheetName,
       target_sheet: sheetName,
       items: items || []

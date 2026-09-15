@@ -488,11 +488,14 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
     const rawBuf = fs.readFileSync(filePath);
     const wb = readExcelBuffer(rawBuf);
     assert.strictEqual(wb.SheetNames[0], 'Sheet1');
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    const rows = XLSX.utils.sheet_to_json<RawExcelRow>(wb.Sheets[wb.SheetNames[0]], { defval: '' });
     assert.strictEqual(rows.length, 106);
     const res = transformExcelRows(rows, 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
     assert.strictEqual(res.success, true);
     assert.strictEqual(res.inputRows, 106);
+    assert.strictEqual(res.validRows, 0);
+    assert.strictEqual(res.filteredBySolution, 100);
+    assert.strictEqual(res.warningRows, 6);
     console.log(`-> File ZIP64 2026-09-15: Đọc thành công ${res.inputRows} dòng, ${res.validRows} dòng hợp lệ!`);
   }
 });

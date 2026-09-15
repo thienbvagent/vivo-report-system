@@ -111,16 +111,21 @@ export async function POST(req: NextRequest) {
 
     // Chỉ gửi dữ liệu lấy từ server; không tin cậy payload hàng do trình duyệt cung cấp.
     try {
+      const fullSheetUrl = sheet_url || (spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` : '');
+      const dateParts = report_date.split('-');
+      const monthYear = dateParts.length >= 2 ? `${dateParts[1]}-${dateParts[0]}` : '';
+
       const n8nRes = await exportBaoCaoToN8n(
         session.centerCode,
         report_date,
+        fullSheetUrl,
         spreadsheetId,
         exportItems,
-        'BaoCao'
+        monthYear
       );
       return NextResponse.json({
         success: true,
-        message: `Đã xuất ${exportItems.length} dòng sang tab BaoCao.`,
+        message: `Đã xuất ${exportItems.length} dòng sang tab ${monthYear || 'Google Sheets'} thành công.`,
         details: n8nRes
       });
     } catch (n8nErr: any) {

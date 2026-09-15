@@ -19,9 +19,12 @@ export async function POST(req: NextRequest) {
       user: authResult.session
     });
 
+    const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0].trim();
+    const isHttps = forwardedProto === 'https' || req.nextUrl.protocol === 'https:';
+
     res.cookies.set(AUTH_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 7 // 7 ngày

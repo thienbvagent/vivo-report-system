@@ -22,8 +22,8 @@
         "conditions": {
           "string": [
             {
-              "value1": "={{ $headers['x-workflow-secret'] }}",
-              "value2": "VivoSecretKey@2026"
+              "value1": "={{ $('Webhook').first().json.headers['x-workflow-secret'] }}",
+              "value2": "={{ $env.N8N_WEBHOOK_SECRET }}"
             }
           ]
         }
@@ -40,12 +40,16 @@
     {
       "parameters": {
         "operation": "read",
-        "sheetId": {
+        "documentId": {
           "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID }}",
           "mode": "id"
         },
-        "range": "DATA!A:S",
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DATA_SHEET || 'DATA' }}",
+          "mode": "name"
+        },
         "options": {}
       },
       "id": "node-get-rows-data",
@@ -74,6 +78,21 @@
       "position": [
         860,
         200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 401,
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unauthorized: Invalid X-Workflow-Secret' }) }}"
+      },
+      "id": "node-respond-unauthorized-query",
+      "name": "Respond Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        420
       ]
     },
     {
@@ -108,6 +127,13 @@
         [
           {
             "node": "Get Rows DATA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorized",
             "type": "main",
             "index": 0
           }

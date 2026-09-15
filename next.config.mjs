@@ -2,8 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  experimental: {
-    serverComponentsExternalPackages: ['bcryptjs']
+  serverExternalPackages: ['bcryptjs'],
+  turbopack: {
+    root: process.cwd()
   }
 };
 

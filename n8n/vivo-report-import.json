@@ -22,8 +22,8 @@
         "conditions": {
           "string": [
             {
-              "value1": "={{ $headers['x-workflow-secret'] }}",
-              "value2": "VivoSecretKey@2026"
+              "value1": "={{ $('Webhook').first().json.headers['x-workflow-secret'] }}",
+              "value2": "={{ $env.N8N_WEBHOOK_SECRET }}"
             }
           ]
         }
@@ -69,21 +69,51 @@
     },
     {
       "parameters": {
-        "operation": "append",
-        "sheetId": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => {\n  const row = item.json;\n  const centerCode = String(row['Mã TTBH'] || '').trim().toUpperCase();\n  const ticket = String(row['Số phiếu sửa chữa'] || '').trim();\n  const partCode = String(row['Mã vật tư linh kiện'] || '').trim();\n  const partName = String(row['Tên vật tư'] || '').trim().toLowerCase();\n  const partIdentity = partCode || `name:${partName}`;\n  const normalizedRow = {\n    ...row,\n    'Loại linh kiện': row['Loại linh kiện'] ?? row['Loại linh kiện'] ?? ''\n  };\n  delete normalizedRow['Loại linh kiện'];\n\n  return {\n    json: {\n      ...normalizedRow,\n      'Khóa cập nhật': JSON.stringify([centerCode, ticket, partIdentity])\n    },\n    pairedItem: { item: index }\n  };\n});"
+      },
+      "id": "node-add-upsert-key",
+      "name": "Add Upsert Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
           "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID || '1hLgM001Z9pX_SPREADSHEET_ID' }}",
+          "value": "={{ $env.GOOGLE_SPREADSHEET_ID }}",
           "mode": "id"
         },
-        "range": "DATA!A:S",
-        "options": {}
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DATA_SHEET || 'DATA' }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Khóa cập nhật"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "handlingExtraData": "error"
+        }
       },
       "id": "node-append-data",
-      "name": "Append DATA Google Sheets",
+      "name": "Upsert DATA Google Sheets",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        1080,
+        1300,
         200
       ],
       "credentials": {
@@ -103,7 +133,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1300,
+        1520,
         200
       ]
     },
@@ -168,14 +198,25 @@
       "main": [
         [
           {
-            "node": "Append DATA Google Sheets",
+            "node": "Add Upsert Key",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Append DATA Google Sheets": {
+    "Add Upsert Key": {
+      "main": [
+        [
+          {
+            "node": "Upsert DATA Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert DATA Google Sheets": {
       "main": [
         [
           {
