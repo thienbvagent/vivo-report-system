@@ -1,3 +1,28 @@
+name: Deploy Vivo Report
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: vivo-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy vivo.pdarc.space
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Vivo VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VIVO_VPS_HOST }}
+          username: ${{ secrets.VIVO_VPS_USER }}
+          key: ${{ secrets.VIVO_VPS_SSH_KEY }}
+          port: 22
+          script_stop: true
           script: |
             set -e
 
@@ -12,6 +37,8 @@
 
             if [ "$CURRENT_REPO" != "$EXPECTED_REPO" ]; then
               echo "ERROR: Sai repository."
+              echo "Expected: $EXPECTED_REPO"
+              echo "Current:  $CURRENT_REPO"
               exit 1
             fi
 
@@ -19,29 +46,35 @@
 
             if [ "$CURRENT_BRANCH" != "main" ]; then
               echo "ERROR: VPS không ở branch main."
+              echo "Current branch: $CURRENT_BRANCH"
               exit 1
             fi
 
-            if [ -n "$(git status --porcelain)" ]; then
-              echo "ERROR: VPS đang có file chưa commit."
-              git status
-              exit 1
-            fi
+            echo "Updating source..."
 
             git fetch origin main
             git reset --hard origin/main
 
-            echo "Cleaning old Vivo containers..."
+            echo "Checking production environment..."
+
+            docker compose config >/dev/null
+
+            echo "Building new image..."
+
+            docker compose build
+
+            echo "Stopping old Vivo containers..."
 
             docker compose down --remove-orphans || true
 
             docker ps -aq --filter "name=vivo-report-app" \
               | xargs -r docker rm -f
 
-            echo "Building and starting Vivo..."
+            echo "Starting Vivo Report..."
 
-            docker compose up -d --build --remove-orphans
+            docker compose up -d --remove-orphans
 
+            echo "Container status:"
             docker compose ps
 
             echo "=============================="
