@@ -1,23 +1,69 @@
-name: Deploy to VPS
+name: Deploy Vivo Report
 
 on:
   push:
-    branches: [ master, main ]
+    branches:
+      - main
+
+concurrency:
+  group: vivo-production
+  cancel-in-progress: true
 
 jobs:
   deploy:
+    name: Deploy vivo.pdarc.space
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy to VPS via SSH
+      - name: Deploy to Vivo VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          password: ${{ secrets.VPS_PASSWORD }}
+          host: ${{ secrets.VIVO_VPS_HOST }}
+          username: ${{ secrets.VIVO_VPS_USER }}
+          key: ${{ secrets.VIVO_VPS_SSH_KEY }}
           port: 22
+          script_stop: true
           script: |
-            cd /opt/vivo-report-system || cd ~/vivo-report-system
-            git pull origin master || git pull origin main
-            docker compose down || true
+            set -e
+
+            echo "=============================="
+            echo "DEPLOY VIVO REPORT SYSTEM"
+            echo "=============================="
+
+            cd /opt/vivo-report-system
+
+            EXPECTED_REPO="https://github.com/thienbvagent/vivo-report-system.git"
+            CURRENT_REPO="$(git remote get-url origin)"
+
+            if [ "$CURRENT_REPO" != "$EXPECTED_REPO" ]; then
+              echo "ERROR: Sai repository."
+              echo "Expected: $EXPECTED_REPO"
+              echo "Current:  $CURRENT_REPO"
+              exit 1
+            fi
+
+            CURRENT_BRANCH="$(git branch --show-current)"
+
+            if [ "$CURRENT_BRANCH" != "main" ]; then
+              echo "ERROR: VPS không ở branch main."
+              echo "Current branch: $CURRENT_BRANCH"
+              exit 1
+            fi
+
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "ERROR: VPS đang có file sửa trực tiếp chưa commit."
+              git status
+              exit 1
+            fi
+
+            git fetch origin main
+            git pull --ff-only origin main
+
             docker compose up -d --build
-            docker image prune -f
+
+            docker compose ps
+
+            echo "=============================="
+            echo "DEPLOY COMPLETED"
+            echo "https://vivo.pdarc.space"
+            echo "=============================="
