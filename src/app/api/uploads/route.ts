@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Lưu vào Database cục bộ
+    const mode = (formData.get('mode') as string) === 'replace' ? 'replace_center' : 'upsert';
+
     saveUploadRecord({
       uploadId,
       centerCode: session.centerCode,
@@ -86,7 +88,12 @@ export async function POST(req: NextRequest) {
       status: 'SUCCESS'
     });
 
-    saveReportItems(transformResult.items);
+    const { inserted, updated } = saveReportItems(transformResult.items, mode);
+
+    let zeroNotice = null;
+    if (transformResult.validRows === 0) {
+      zeroNotice = `File chứa ${transformResult.inputRows} dòng nhưng toàn bộ 106 dòng đều trống cột "Mã linh kiện" và "Tên linh kiện" (đây là file xuất ở cấp độ tổng hợp phiếu, chưa tích chọn xuất chi tiết linh kiện). Do đó hệ thống không có dữ liệu linh kiện mới nào để thêm vào báo cáo. Báo cáo hiện tại vẫn hiển thị dữ liệu của lần tải lên trước đó.`;
+    }
 
     return NextResponse.json({
       success: true,
@@ -95,6 +102,10 @@ export async function POST(req: NextRequest) {
       filteredBySolution: transformResult.filteredBySolution,
       validRows: transformResult.validRows,
       warningRows: transformResult.warningRows,
+      insertedRows: inserted,
+      updatedRows: updated,
+      mode,
+      zeroNotice,
       tgddRows: transformResult.tgddRows,
       klRows: transformResult.klRows,
       totalCash: transformResult.totalCash,

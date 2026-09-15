@@ -85,22 +85,56 @@ export function saveUploadRecord(record: UploadRecord) {
   fs.writeFileSync(UPLOADS_FILE, JSON.stringify(records, null, 2), 'utf-8');
 }
 
-export function saveReportItems(items: ProcessedReportItem[]) {
+export function saveReportItems(
+  items: ProcessedReportItem[],
+  mode: 'upsert' | 'replace_center' = 'upsert'
+): { inserted: number; updated: number } {
   initDatabase();
-  const existing: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
-  
-  // Tránh duplicate items cùng số phiếu + mã linh kiện + thời gian lấy máy
-  const keySet = new Set(existing.map(i => `${i['Số phiếu sửa chữa']}_${i['Mã vật tư linh kiện']}_${i['Thời gian lấy máy']}`));
-  
-  for (const item of items) {
-    const key = `${item['Số phiếu sửa chữa']}_${item['Mã vật tư linh kiện']}_${item['Thời gian lấy máy']}`;
-    if (!keySet.has(key)) {
-      existing.push(item);
-      keySet.add(key);
+  let existing: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  let inserted = 0;
+  let updated = 0;
+
+  if (mode === 'replace_center' && items.length > 0) {
+    const centerCode = items[0]['Mã TTBH'];
+    // Xóa toàn bộ dữ liệu của TTBH này để thay thế bằng dữ liệu từ file mới
+    existing = existing.filter(i => i['Mã TTBH'] !== centerCode);
+    existing.push(...items);
+    inserted = items.length;
+  } else {
+    // Upsert: Dò tìm theo số phiếu + mã LK + thời gian lấy máy
+    const indexMap = new Map<string, number>();
+    existing.forEach((item, idx) => {
+      const key = `${item['Số phiếu sửa chữa']}_${item['Mã vật tư linh kiện']}_${item['Thời gian lấy máy']}`;
+      indexMap.set(key, idx);
+    });
+
+    for (const item of items) {
+      const key = `${item['Số phiếu sửa chữa']}_${item['Mã vật tư linh kiện']}_${item['Thời gian lấy máy']}`;
+      if (indexMap.has(key)) {
+        const existingIdx = indexMap.get(key)!;
+        existing[existingIdx] = { ...existing[existingIdx], ...item };
+        updated++;
+      } else {
+        existing.push(item);
+        indexMap.set(key, existing.length - 1);
+        inserted++;
+      }
     }
   }
 
   fs.writeFileSync(REPORTS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+  return { inserted, updated };
+}
+
+export function clearCenterData(centerCode: string) {
+  initDatabase();
+  const existingReports: ProcessedReportItem[] = JSON.parse(fs.readFileSync(REPORTS_FILE, 'utf-8'));
+  const filteredReports = existingReports.filter(i => i['Mã TTBH'] !== centerCode);
+  fs.writeFileSync(REPORTS_FILE, JSON.stringify(filteredReports, null, 2), 'utf-8');
+
+  const existingUploads: UploadRecord[] = JSON.parse(fs.readFileSync(UPLOADS_FILE, 'utf-8'));
+  const filteredUploads = existingUploads.filter(u => u.centerCode !== centerCode);
+  fs.writeFileSync(UPLOADS_FILE, JSON.stringify(filteredUploads, null, 2), 'utf-8');
 }
 
 export function getReportItems(centerCode: string, reportDate?: string): ProcessedReportItem[] {

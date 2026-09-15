@@ -11,6 +11,7 @@ export default function UploadsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadMode, setUploadMode] = useState<'upsert' | 'replace'>('upsert');
   const [result, setResult] = useState<any | null>(null);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function UploadsPage() {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('mode', uploadMode);
 
     try {
       const res = await fetch('/api/uploads', {
@@ -81,7 +83,7 @@ export default function UploadsPage() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               File tải lên phải thuộc trung tâm: <strong>{user.centerName} ({user.centerCode})</strong>.
-              Hệ thống sẽ tự động lọc theo Phương án giải quyết, kiểm tra Thời gian lấy máy và phân loại TGDĐ/KL.
+              Hệ thống sẽ tự động lọc các dòng phát sinh linh kiện, kiểm tra Thời gian lấy máy và tính toán Doanh thu / Công nợ theo quy định thuế & chiết khấu.
             </p>
           </div>
 
@@ -111,9 +113,47 @@ export default function UploadsPage() {
                   {file ? file.name : 'Bấm vào đây để chọn file Excel hoặc kéo thả file'}
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
-                  Định dạng hỗ trợ: .xlsx, .xls (báo cáo truy vấn chi tiết phiếu công tác sửa chữa)
+                  Định dạng hỗ trợ: .xlsx, .xls (Báo cáo truy vấn chi tiết phiếu công tác sửa chữa có chi tiết linh kiện)
                 </div>
               </label>
+            </div>
+
+            {/* Chế độ nạp dữ liệu */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                Chế độ nạp dữ liệu:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition ${uploadMode === 'upsert' ? 'bg-blue-50/70 border-blue-400 text-blue-900' : 'bg-white border-slate-200 text-slate-700'}`}>
+                  <input
+                    type="radio"
+                    name="mode"
+                    value="upsert"
+                    checked={uploadMode === 'upsert'}
+                    onChange={() => setUploadMode('upsert')}
+                    className="mt-1"
+                  />
+                  <div className="text-xs">
+                    <strong className="block text-sm">Cập nhật & Bổ sung (Khuyên dùng)</strong>
+                    <span>Cập nhật lại các phiếu đã có và thêm các dòng mới vào báo cáo. Giữ lại các ngày khác đã nạp.</span>
+                  </div>
+                </label>
+
+                <label className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition ${uploadMode === 'replace' ? 'bg-amber-50/70 border-amber-400 text-amber-900' : 'bg-white border-slate-200 text-slate-700'}`}>
+                  <input
+                    type="radio"
+                    name="mode"
+                    value="replace"
+                    checked={uploadMode === 'replace'}
+                    onChange={() => setUploadMode('replace')}
+                    className="mt-1"
+                  />
+                  <div className="text-xs">
+                    <strong className="block text-sm">Ghi đè hoàn toàn TTBH</strong>
+                    <span>Xóa toàn bộ dữ liệu báo cáo cũ của trung tâm này và chỉ lưu dữ liệu từ file mới tải lên.</span>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <button
@@ -122,53 +162,76 @@ export default function UploadsPage() {
               className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               {uploading ? (
-                <span>Đang phân tích và đồng bộ sang n8n...</span>
+                <span>Đang phân tích và nạp dữ liệu...</span>
               ) : (
                 <>
                   <UploadCloud className="w-5 h-5" />
-                  <span>Xử Lý & Đồng Bộ Dữ Liệu</span>
+                  <span>Xử Lý & Nạp Báo Cáo</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Success summary card */}
+          {/* Success / Warning summary card */}
           {result && (
-            <div className="m-6 p-6 bg-emerald-50 border border-emerald-200 rounded-2xl">
-              <div className="flex items-center space-x-3 text-emerald-800 font-black text-lg mb-4">
-                <CheckCircle className="w-6 h-6 text-emerald-600" />
-                <span>Xử Lý Thành Công!</span>
+            <div className={`m-6 p-6 rounded-2xl border ${result.validRows === 0 ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-200'}`}>
+              <div className="flex items-center space-x-3 font-black text-lg mb-3">
+                {result.validRows === 0 ? (
+                  <>
+                    <AlertTriangle className="w-6 h-6 text-amber-600" />
+                    <span className="text-amber-800">Đã Đọc File ({result.inputRows} dòng) - Cần Chú Ý!</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-6 h-6 text-emerald-600" />
+                    <span className="text-emerald-800">Nạp Dữ Liệu Thành Công!</span>
+                  </>
+                )}
               </div>
 
+              {result.zeroNotice && (
+                <div className="mb-4 p-4 bg-white/80 border border-amber-200 rounded-xl text-xs sm:text-sm text-amber-900 leading-relaxed">
+                  <p className="font-semibold mb-1.5">{result.zeroNotice}</p>
+                  <div className="bg-amber-100/60 p-2.5 rounded-lg mt-2 text-xs text-amber-950">
+                    💡 <strong>Cách xử lý:</strong> Khi xuất báo cáo từ hệ thống Vivo (DMS/CRM), quý khách vui lòng chọn xuất <strong>"Chi tiết linh kiện"</strong> để file có đầy đủ các cột <em>Mã linh kiện, Tên linh kiện, Đơn giá</em>. Khi tải file chi tiết đó lên, hệ thống sẽ tự động cập nhật ngay.
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
-                <div className="bg-white p-3 rounded-lg border border-emerald-200">
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
                   <div className="text-xs text-slate-500 font-semibold">Tổng dòng gốc</div>
                   <div className="text-lg font-bold text-slate-800">{result.inputRows}</div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border border-emerald-200">
-                  <div className="text-xs text-slate-500 font-semibold">Dòng hợp lệ</div>
-                  <div className="text-lg font-bold text-emerald-700">{result.validRows}</div>
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <div className="text-xs text-slate-500 font-semibold">Dòng linh kiện hợp lệ</div>
+                  <div className={`text-lg font-bold ${result.validRows === 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                    {result.validRows}
+                  </div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border border-emerald-200">
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
                   <div className="text-xs text-slate-500 font-semibold">TGDĐ (Công nợ)</div>
                   <div className="text-lg font-bold text-amber-700">{result.tgddRows}</div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border border-emerald-200">
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
                   <div className="text-xs text-slate-500 font-semibold">Khách lẻ (TM)</div>
                   <div className="text-lg font-bold text-blue-700">{result.klRows}</div>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center pt-2">
-                <div className="text-xs text-emerald-700">
-                  Đã ghi nhận dữ liệu cho các ngày:{' '}
-                  <strong>{result.availableReportDates?.slice(-5).join(', ')}</strong>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
+                <div className="text-xs text-slate-600">
+                  {result.validRows > 0 ? (
+                    <span>Đã thêm mới <strong>{result.insertedRows}</strong> dòng, cập nhật <strong>{result.updatedRows}</strong> dòng.</span>
+                  ) : (
+                    <span className="text-amber-700 font-medium">Báo cáo hiện tại vẫn giữ dữ liệu của lần tải lên trước đó.</span>
+                  )}
                 </div>
                 <button
                   onClick={() => router.push('/dashboard')}
-                  className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition"
+                  className={`flex items-center space-x-1.5 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm ${result.validRows === 0 ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                 >
-                  <span>Xem Báo Cáo</span>
+                  <span>Xem Báo Cáo Hiện Tại</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

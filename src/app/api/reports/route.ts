@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
-import { getReportItems, getAvailableDates } from '@/lib/db-storage';
+import { getReportItems, getAvailableDates, clearCenterData } from '@/lib/db-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,6 +46,19 @@ export async function GET(req: NextRequest) {
       },
       rows: items
     });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getCurrentSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    clearCenterData(session.centerCode);
+    return NextResponse.json({ success: true, message: 'Đã làm mới và xóa toàn bộ dữ liệu báo cáo cũ của trung tâm.' });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import SummaryCards, { SummaryData } from '@/components/SummaryCards';
 import DataTable from '@/components/DataTable';
-import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink } from 'lucide-react';
+import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2 } from 'lucide-react';
 import { ProcessedReportItem } from '@/lib/business-rules';
 
 export default function DashboardPage() {
@@ -97,6 +97,27 @@ export default function DashboardPage() {
   const handleDateChange = (newDate: string) => {
     setSelectedDate(newDate);
     fetchReportData(newDate);
+  };
+
+  const handleClearData = async () => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa toàn bộ dữ liệu báo cáo cũ của trung tâm ${user?.centerName}? Thao tác này giúp bạn làm sạch dữ liệu để tải lên file mới từ đầu.`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await fetch('/api/reports', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'Đã làm mới dữ liệu thành công.');
+        fetchReportData('ALL');
+      } else {
+        alert('Lỗi: ' + data.error);
+      }
+    } catch (err: any) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExportGoogleSheets = async () => {
@@ -239,6 +260,16 @@ export default function DashboardPage() {
               title="Làm mới dữ liệu"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Clear / Reset Data */}
+            <button
+              onClick={handleClearData}
+              className="flex items-center space-x-1.5 p-2 bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl shadow-sm transition text-xs font-semibold"
+              title="Xóa toàn bộ dữ liệu báo cáo cũ của trung tâm này để nạp lại từ đầu"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Làm Sạch Dữ Liệu</span>
             </button>
 
             {/* Export BaoCao Button */}
