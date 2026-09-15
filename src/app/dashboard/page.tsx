@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import SummaryCards, { SummaryData } from '@/components/SummaryCards';
 import DataTable from '@/components/DataTable';
-import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2 } from 'lucide-react';
+import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2, FileSpreadsheet } from 'lucide-react';
 import { ProcessedReportItem } from '@/lib/business-rules';
 
 export default function DashboardPage() {
@@ -190,8 +190,7 @@ export default function DashboardPage() {
           report_date: selectedDate,
           sheet_url: googleSheetUrl.trim(),
           spreadsheet_id: extractSheetId(googleSheetUrl),
-          target_sheet: targetMonthYear,
-          targetSheet: targetMonthYear,
+          target_sheet: 'BaoCao',
           items: exportItems
         })
       });
@@ -205,7 +204,7 @@ export default function DashboardPage() {
       } else {
         setExportNotice({
           type: 'error',
-          message: data.error || 'Xuất thất bại.'
+          message: `${data.error || 'Xuất thất bại.'} — Lưu ý: 1) Bảng tính Google Sheet cần có tab tên chính xác là "BaoCao"; 2) Cần bấm "Chia sẻ" và cấp quyền "Người chỉnh sửa" (Editor) cho email Google liên kết trong n8n.`
         });
       }
     } catch (err: any) {
@@ -277,10 +276,27 @@ export default function DashboardPage() {
               onClick={handleExportGoogleSheets}
               disabled={exporting || rows.length === 0 || selectedDate === 'ALL'}
               className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm"
+              title="Xuất dữ liệu ngày đang chọn sang Google Sheets qua n8n"
             >
               <Download className="w-4 h-4" />
               <span>{exporting ? 'Đang xuất BaoCao...' : 'Xuất Tab BaoCao'}</span>
             </button>
+
+            {/* Download Excel File Button */}
+            <a
+              href={selectedDate !== 'ALL' ? `/api/export?date=${encodeURIComponent(selectedDate)}` : '#'}
+              onClick={e => {
+                if (selectedDate === 'ALL') {
+                  e.preventDefault();
+                  alert('Vui lòng chọn một ngày cụ thể (ví dụ: 2026-09-15) trên ô Ngày báo cáo để tải file Excel!');
+                }
+              }}
+              className={`flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 || selectedDate === 'ALL' ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Tải trực tiếp file Excel (.xlsx) chuẩn 15 cột về máy tính"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Tải File Excel (.xlsx)</span>
+            </a>
           </div>
         </div>
 
