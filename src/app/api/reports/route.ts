@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
-import { getReportItems, getAvailableDates, clearCenterData } from '@/lib/db-storage';
+import { getReportItems, getAvailableDates, getDateCounts, clearCenterData } from '@/lib/db-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
     const dateParam = searchParams.get('date') || '';
 
     const availableDates = getAvailableDates(session.centerCode);
+    const dateCounts = getDateCounts(session.centerCode);
+    const totalAllRows = Object.values(dateCounts).reduce((a, b) => a + b, 0);
     const selectedDate = dateParam || (availableDates.length > 0 ? availableDates[0] : 'ALL');
 
     const items = getReportItems(session.centerCode, selectedDate);
@@ -33,6 +35,8 @@ export async function GET(req: NextRequest) {
         name: session.centerName
       },
       availableDates,
+      dateCounts,
+      totalAllRows,
       selectedDate,
       summary: {
         totalRows,

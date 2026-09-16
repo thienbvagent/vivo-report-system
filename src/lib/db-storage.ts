@@ -198,3 +198,15 @@ export function getAvailableDates(centerCode: string): string[] {
   }
   return Array.from(dates).sort().reverse();
 }
+
+export function getDateCounts(centerCode: string): Record<string, number> {
+  initDatabase();
+  const items: ProcessedReportItem[] = JSON.parse(fs.readFileSync(getDataFile('reports.json'), 'utf-8'));
+  const counts: Record<string, number> = {};
+  for (const i of items) {
+    if (i['Mã TTBH'] === centerCode && i['Ngày báo cáo']) {
+      counts[i['Ngày báo cáo']] = (counts[i['Ngày báo cáo']] || 0) + 1;
+    }
+  }
+  return counts;
+}

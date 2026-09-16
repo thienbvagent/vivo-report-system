@@ -13,6 +13,8 @@ export default function DashboardPage() {
   const [user, setUser] = useState<{ centerCode: string; centerName: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [dateCounts, setDateCounts] = useState<Record<string, number>>({});
+  const [totalAllRows, setTotalAllRows] = useState<number>(0);
   const [selectedDate, setSelectedDate] = useState<string>('ALL');
   const [rows, setRows] = useState<ProcessedReportItem[]>([]);
   const [googleSheetUrl, setGoogleSheetUrl] = useState('');
@@ -71,6 +73,8 @@ export default function DashboardPage() {
       .then(data => {
         if (data.success) {
           setAvailableDates(data.availableDates || []);
+          setDateCounts(data.dateCounts || {});
+          setTotalAllRows(data.totalAllRows || 0);
           setSelectedDate(data.selectedDate || 'ALL');
           setRows(data.rows || []);
           setSummary(data.summary || {
@@ -246,9 +250,11 @@ export default function DashboardPage() {
                 onChange={e => handleDateChange(e.target.value)}
                 className="bg-transparent font-semibold text-blue-600 focus:outline-none cursor-pointer"
               >
-                <option value="ALL">Tất cả các ngày</option>
+                <option value="ALL">Tất cả các ngày ({totalAllRows} dòng)</option>
                 {availableDates.map(d => (
-                  <option key={d} value={d}>{d}</option>
+                  <option key={d} value={d}>
+                    {d} ({dateCounts[d] || 0} dòng)
+                  </option>
                 ))}
               </select>
             </div>
