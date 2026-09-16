@@ -102,7 +102,10 @@ export default function DashboardPage() {
       const res = await fetch('/api/sync-retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}'
+        body: JSON.stringify({
+          sheet_url: googleSheetUrl.trim(),
+          spreadsheet_id: extractSheetId(googleSheetUrl)
+        })
       });
       const data = await res.json();
       if (data.success) {

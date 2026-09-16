@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
       : { inserted: 0, updated: 0 };
 
     // 5. Đồng bộ n8n chỉ khi file có dữ liệu linh kiện hợp lệ.
+    const clientSheetUrl = String(formData.get('sheet_url') || formData.get('sheetUrl') || '').trim();
     let n8nStatus: 'SYNCED_N8N' | 'FAILED_N8N' | 'NOT_ATTEMPTED_NO_DATA' = 'NOT_ATTEMPTED_NO_DATA';
     let n8nError: string | null = null;
     if (transformResult.validRows > 0) {
@@ -109,7 +110,8 @@ export async function POST(req: NextRequest) {
           session.centerName,
           uploadId,
           mode === 'replace_center' ? 'replace' : 'upsert',
-          transformResult.items
+          transformResult.items,
+          clientSheetUrl || undefined
         );
         if (n8nRes.success) {
           n8nStatus = 'SYNCED_N8N';

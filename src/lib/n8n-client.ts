@@ -30,10 +30,13 @@ export async function forwardImportToN8n(
   centerName: string,
   uploadId: string,
   mode: 'upsert' | 'replace' = 'upsert',
-  items?: any[]
+  items?: any[],
+  sheetUrl?: string
 ): Promise<N8nImportResponse> {
   const webhookUrl = getRequiredEnv('N8N_IMPORT_WEBHOOK_URL');
   const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
+
+  const effectiveSheetUrl = (sheetUrl || process.env.DEFAULT_GOOGLE_SHEET_URL || '').trim();
 
   const formData = new FormData();
   formData.append('file', new Blob([new Uint8Array(fileBuffer)]), fileName);
@@ -41,6 +44,10 @@ export async function forwardImportToN8n(
   formData.append('center_name', centerName);
   formData.append('upload_id', uploadId);
   formData.append('mode', mode);
+  if (effectiveSheetUrl) {
+    formData.append('sheet_url', effectiveSheetUrl);
+    formData.append('sheetUrl', effectiveSheetUrl);
+  }
   if (items && items.length > 0) {
     formData.append('items_json', JSON.stringify(items));
   }
@@ -110,6 +117,11 @@ export async function exportBaoCaoToN8n(
   })();
 
   const sheetName = targetSheet || defaultMonthYear;
+  const effectiveSheetUrl = (sheetUrl || process.env.DEFAULT_GOOGLE_SHEET_URL || '').trim();
+  const effectiveSpreadsheetId = (spreadsheetId || (() => {
+    const m = effectiveSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return m ? m[1] : effectiveSheetUrl;
+  })()).trim();
 
   const res = await fetch(webhookUrl, {
     method: 'POST',
@@ -120,10 +132,10 @@ export async function exportBaoCaoToN8n(
     body: JSON.stringify({ 
       center_code: centerCode, 
       report_date: reportDate,
-      sheet_url: sheetUrl || '',
-      sheetUrl: sheetUrl || '',
-      spreadsheet_id: spreadsheetId || '',
-      spreadsheetId: spreadsheetId || '',
+      sheet_url: effectiveSheetUrl,
+      sheetUrl: effectiveSheetUrl,
+      spreadsheet_id: effectiveSpreadsheetId,
+      spreadsheetId: effectiveSpreadsheetId,
       targetSheet: sheetName,
       target_sheet: sheetName,
       items: items || []

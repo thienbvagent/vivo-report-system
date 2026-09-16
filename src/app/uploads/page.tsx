@@ -100,6 +100,11 @@ export default function UploadsPage() {
     }
   };
 
+  const getStoredSheetUrl = () => {
+    if (typeof window === 'undefined') return '';
+    return (localStorage.getItem('vivo_google_sheet_url') || '').trim();
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
@@ -111,6 +116,11 @@ export default function UploadsPage() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('mode', uploadMode);
+    const sheetUrl = getStoredSheetUrl();
+    if (sheetUrl) {
+      formData.append('sheet_url', sheetUrl);
+      formData.append('sheetUrl', sheetUrl);
+    }
 
     try {
       const res = await fetch('/api/uploads', {
@@ -141,10 +151,11 @@ export default function UploadsPage() {
     setRetrying(true);
     setRetryNotice(null);
     try {
+      const sheetUrl = getStoredSheetUrl();
       const res = await fetch('/api/sync-retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId: targetId })
+        body: JSON.stringify({ uploadId: targetId, sheet_url: sheetUrl })
       });
       const data = await res.json();
       if (data.success) {
@@ -167,10 +178,11 @@ export default function UploadsPage() {
     setRetryingId(uploadId);
     setHistoryNotice(null);
     try {
+      const sheetUrl = getStoredSheetUrl();
       const res = await fetch('/api/sync-retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId })
+        body: JSON.stringify({ uploadId, sheet_url: sheetUrl })
       });
       const data = await res.json();
       if (data.success) {
@@ -190,10 +202,11 @@ export default function UploadsPage() {
     setRetryingAll(true);
     setHistoryNotice(null);
     try {
+      const sheetUrl = getStoredSheetUrl();
       const res = await fetch('/api/sync-retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ retryAll: true })
+        body: JSON.stringify({ retryAll: true, sheet_url: sheetUrl })
       });
       const data = await res.json();
       if (data.success) {

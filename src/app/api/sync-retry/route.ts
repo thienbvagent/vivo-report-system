@@ -12,6 +12,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const targetUploadId = body.uploadId ? String(body.uploadId).trim() : '';
+    const sheetUrl = String(body.sheet_url || body.sheetUrl || '').trim();
+    const spreadsheetId = String(body.spreadsheet_id || body.spreadsheetId || '').trim();
 
     const uploads = getUploads(session.centerCode);
     const pendingUploads = targetUploadId
@@ -46,8 +48,8 @@ export async function POST(req: NextRequest) {
         const n8nRes = await exportBaoCaoToN8n(
           session.centerCode,
           reportDate,
-          undefined,
-          undefined,
+          sheetUrl || undefined,
+          spreadsheetId || undefined,
           items,
           monthYear
         );
