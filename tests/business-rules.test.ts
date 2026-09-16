@@ -510,6 +510,11 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
     assert.strictEqual(res.validRows, 0);
     assert.strictEqual(res.filteredBySolution, 100);
     assert.strictEqual(res.warningRows, 0);
+    assert.ok(res.solutionStats && res.solutionStats.length > 0);
+    const softwareStat = res.solutionStats.find(s => s.solution.includes('Chạy phần mềm'));
+    assert.ok(softwareStat);
+    assert.strictEqual(softwareStat.ticketCount, 58);
+    assert.strictEqual(softwareStat.rowCount, 58);
     console.log(`-> File ZIP64 2026-09-15: Đọc thành công ${res.inputRows} dòng, ${res.validRows} dòng hợp lệ!`);
   }
 
@@ -534,4 +539,76 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
   assert.throws(() => {
     fixZip64Buffer(fakeBomb);
   }, /Kích thước tập tin giải nén vượt quá giới hạn an toàn/);
+});
+
+test('Test 25: Thống kê số lượng phiếu theo Phương án giải quyết (solutionStats)', () => {
+  const rows = [
+    createMockRow({
+      'Thời gian lấy máy': '2026-09-14 10:00:00',
+      'Phương án giải quyết': 'Khôi phục hệ thống - Chạy phần mềm PC',
+      'Phiếu công tác sửa chữa': 'TICKET_01',
+      'Mã linh kiện': '',
+      'Tên linh kiện': ''
+    }),
+    createMockRow({
+      'Thời gian lấy máy': '2026-09-14 11:00:00',
+      'Phương án giải quyết': 'Khôi phục hệ thống - Chạy phần mềm PC',
+      'Phiếu công tác sửa chữa': 'TICKET_02',
+      'Mã linh kiện': '',
+      'Tên linh kiện': ''
+    }),
+    createMockRow({
+      'Thời gian lấy máy': '2026-09-14 12:00:00',
+      'Phương án giải quyết': 'Thay thế linh kiện và phụ kiện',
+      'Phiếu công tác sửa chữa': 'TICKET_03',
+      'Mã linh kiện': 'PART_A',
+      'Tên linh kiện': 'Màn hình',
+      'Loại linh kiện': 'Sửa chữa',
+      'Số tiền phải thu': 500000,
+      'Số tiền thực thu': 500000
+    }),
+    createMockRow({
+      'Thời gian lấy máy': '2026-09-14 12:00:00',
+      'Phương án giải quyết': 'Thay thế linh kiện và phụ kiện',
+      'Phiếu công tác sửa chữa': 'TICKET_03',
+      'Mã linh kiện': 'PART_B',
+      'Tên linh kiện': 'Pin',
+      'Loại linh kiện': 'Sửa chữa',
+      'Số tiền phải thu': 200000,
+      'Số tiền thực thu': 200000
+    }),
+    createMockRow({
+      'Thời gian lấy máy': '2026-09-14 14:00:00',
+      'Phương án giải quyết': 'Khách hàng huỷ sửa chữa- Lý do giá cả',
+      'Phiếu công tác sửa chữa': 'TICKET_04',
+      'Mã linh kiện': '',
+      'Tên linh kiện': ''
+    })
+  ];
+
+  const res = transformExcelRows(rows, 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
+  assert.strictEqual(res.success, true);
+  assert.ok(res.solutionStats);
+  assert.strictEqual(res.solutionStats.length, 3);
+
+  // Sắp xếp giảm dần theo số phiếu:
+  // 1. Khôi phục hệ thống: 2 phiếu, 2 dòng, 0 dòng linh kiện
+  assert.strictEqual(res.solutionStats[0].solution.includes('Chạy phần mềm'), true);
+  assert.strictEqual(res.solutionStats[0].ticketCount, 2);
+  assert.strictEqual(res.solutionStats[0].rowCount, 2);
+  assert.strictEqual(res.solutionStats[0].validRowCount, 0);
+
+  // 2. Thay thế linh kiện: 1 phiếu (2 dòng linh kiện), 2 dòng, 2 dòng linh kiện hợp lệ
+  const replaceStat = res.solutionStats.find(s => s.solution.includes('Thay') && s.solution.includes('linh'));
+  assert.ok(replaceStat);
+  assert.strictEqual(replaceStat.ticketCount, 1);
+  assert.strictEqual(replaceStat.rowCount, 2);
+  assert.strictEqual(replaceStat.validRowCount, 2);
+
+  // 3. Khách hàng huỷ: 1 phiếu, 1 dòng, 0 dòng linh kiện
+  const cancelStat = res.solutionStats.find(s => s.solution.includes('huỷ') || s.solution.includes('hủy'));
+  assert.ok(cancelStat);
+  assert.strictEqual(cancelStat.ticketCount, 1);
+  assert.strictEqual(cancelStat.rowCount, 1);
+  assert.strictEqual(cancelStat.validRowCount, 0);
 });
