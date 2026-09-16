@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         'Mã vật tư linh kiện': item['Mã vật tư linh kiện'],
         'Tên vật tư': item['Tên vật tư'],
         'Xuất Bảo Hành': item['Xuất Bảo Hành'] === 1 || item['Xuất Bảo Hành'] === '1' ? 1 : '',
+        'Xuất phụ kiện': item['Xuất phụ kiện'] === 1 || item['Xuất phụ kiện'] === '1' ? 1 : '',
         'Xuất Sửa Chữa': item['Xuất Sửa Chữa'] === 1 || item['Xuất Sửa Chữa'] === '1' ? 1 : '',
         'Đơn giá': item['Đơn giá'] === null ? '' : Math.round(Number(item['Đơn giá'])),
         'Doanh thu tiền mặt': isTgdd || item['Doanh thu tiền mặt'] === null ? '' : Math.round(Number(item['Doanh thu tiền mặt'])),
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
         'CN trước thuế': isTgdd ? Math.round(Number(item['CN trước thuế'] || 0)) : '',
         'Khách hàng': item['Khách hàng'],
         'Phương thức thanh toán': item['Phương thức thanh toán'],
+        'Jobcard': item['Jobcard'] || '',
         'TTBH': session.centerCode
       };
     });
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest) {
         'Mã vật tư linh kiện': item['Mã vật tư linh kiện'],
         'Tên vật tư': item['Tên vật tư'],
         'Xuất Bảo Hành': item['Xuất Bảo Hành'] === 1 || item['Xuất Bảo Hành'] === '1' ? 1 : '',
+        'Xuất phụ kiện': item['Xuất phụ kiện'] === 1 || item['Xuất phụ kiện'] === '1' ? 1 : '',
         'Xuất Sửa Chữa': item['Xuất Sửa Chữa'] === 1 || item['Xuất Sửa Chữa'] === '1' ? 1 : '',
         'Đơn giá': item['Đơn giá'] === null ? '' : Math.round(Number(item['Đơn giá'])),
         'Doanh thu tiền mặt': isTgdd || item['Doanh thu tiền mặt'] === null ? '' : Math.round(Number(item['Doanh thu tiền mặt'])),
@@ -105,6 +108,7 @@ export async function POST(req: NextRequest) {
         'CN trước thuế': isTgdd ? Math.round(Number(item['CN trước thuế'] || 0)) : '',
         'Khách hàng': item['Khách hàng'],
         'Phương thức thanh toán': item['Phương thức thanh toán'],
+        'Jobcard': item['Jobcard'] || '',
         'TTBH': session.centerCode
       };
     });

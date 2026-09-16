@@ -12,7 +12,7 @@ export default function DataTable({ rows }: DataTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCustomer, setFilterCustomer] = useState<'ALL' | 'KL' | 'TGDĐ' | 'INSURANCE'>('ALL');
   const [filterPayment, setFilterPayment] = useState<'ALL' | 'TM' | 'CN'>('ALL');
-  const [filterExportType, setFilterExportType] = useState<'ALL' | 'BH' | 'SC'>('ALL');
+  const [filterExportType, setFilterExportType] = useState<'ALL' | 'BH' | 'PK' | 'SC'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
@@ -38,8 +38,9 @@ export default function DataTable({ rows }: DataTableProps) {
       if (filterPayment !== 'ALL' && r['Phương thức thanh toán'] !== filterPayment) return false;
 
       // Export type filter
-      if (filterExportType === 'BH' && r['Xuất Bảo Hành'] !== 1) return false;
-      if (filterExportType === 'SC' && r['Xuất Sửa Chữa'] !== 1) return false;
+      if (filterExportType === 'BH' && r['Xuất Bảo Hành'] !== 1 && r['Xuất Bảo Hành'] !== '1') return false;
+      if (filterExportType === 'PK' && r['Xuất phụ kiện'] !== 1 && r['Xuất phụ kiện'] !== '1') return false;
+      if (filterExportType === 'SC' && r['Xuất Sửa Chữa'] !== 1 && r['Xuất Sửa Chữa'] !== '1') return false;
 
       return true;
     });
@@ -115,6 +116,7 @@ export default function DataTable({ rows }: DataTableProps) {
           >
             <option value="ALL">Tất cả Loại Xuất</option>
             <option value="BH">Xuất Bảo Hành (=1)</option>
+            <option value="PK">Xuất Phụ Kiện (=1)</option>
             <option value="SC">Xuất Sửa Chữa (=1)</option>
           </select>
 
@@ -147,7 +149,10 @@ export default function DataTable({ rows }: DataTableProps) {
               <th className="py-2.5 px-1.5 text-center w-8">STT</th>
               <th className="py-2.5 px-2 whitespace-nowrap">Số Phiếu Sửa Chữa</th>
               <th className="py-2.5 px-1.5 whitespace-nowrap">Mã LK</th>
-              <th className="py-2.5 px-2">Tên Vật Tư LK</th>
+              <th className="py-2.5 px-2 whitespace-nowrap">Tên Vật Tư LK</th>
+              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất BH</th>
+              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất PK</th>
+              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất SC</th>
               <th className="py-2.5 px-2 text-right whitespace-nowrap">Đơn Giá</th>
               <th className="py-2.5 px-2 text-right whitespace-nowrap">Tiền Mặt</th>
               <th className="py-2.5 px-2 text-right whitespace-nowrap">TM Trước Thuế</th>
@@ -156,15 +161,14 @@ export default function DataTable({ rows }: DataTableProps) {
               <th className="py-2.5 px-2 text-right whitespace-nowrap">CN Trước Thuế</th>
               <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Khách</th>
               <th className="py-2.5 px-1.5 text-center whitespace-nowrap">PTTT</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất BH</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất SC</th>
+              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Jobcard</th>
               <th className="py-2.5 px-2 whitespace-nowrap">Thời Gian Lấy Máy</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="py-8 text-center text-slate-400">
+                <td colSpan={17} className="py-8 text-center text-slate-400">
                   Không tìm thấy dữ liệu phù hợp với bộ lọc.
                 </td>
               </tr>
@@ -198,6 +202,21 @@ export default function DataTable({ rows }: DataTableProps) {
                     </td>
                     <td className="py-2 px-2 text-slate-700 max-w-[130px] xl:max-w-[180px] 2xl:max-w-[240px] truncate text-xs" title={r['Tên vật tư']}>
                       {r['Tên vật tư'] || '-'}
+                    </td>
+                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                      {r['Xuất Bảo Hành'] === 1 || r['Xuất Bảo Hành'] === '1' ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-teal-100 text-teal-800">1</span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                      {r['Xuất phụ kiện'] === 1 || r['Xuất phụ kiện'] === '1' ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-indigo-100 text-indigo-800">1</span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                      {r['Xuất Sửa Chữa'] === 1 || r['Xuất Sửa Chữa'] === '1' ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-purple-100 text-purple-800">1</span>
+                      ) : null}
                     </td>
                     <td className="py-2 px-2 text-right font-medium text-slate-900 whitespace-nowrap text-xs">
                       {formatCurrency(r['Đơn giá'])}
@@ -249,15 +268,8 @@ export default function DataTable({ rows }: DataTableProps) {
                         {r['Phương thức thanh toán']}
                       </span>
                     </td>
-                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
-                      {r['Xuất Bảo Hành'] === 1 || r['Xuất Bảo Hành'] === '1' ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-teal-100 text-teal-800">1</span>
-                      ) : null}
-                    </td>
-                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
-                      {r['Xuất Sửa Chữa'] === 1 || r['Xuất Sửa Chữa'] === '1' ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-purple-100 text-purple-800">1</span>
-                      ) : null}
+                    <td className="py-2 px-1.5 text-center font-mono text-xs whitespace-nowrap text-slate-400">
+                      {r['Jobcard'] || ''}
                     </td>
                     <td className="py-2 px-2 text-slate-500 font-mono text-xs whitespace-nowrap">
                       {r['Thời gian lấy máy']}

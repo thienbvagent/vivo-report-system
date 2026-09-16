@@ -612,3 +612,13 @@ test('Test 25: Thống kê số lượng phiếu theo Phương án giải quyế
   assert.strictEqual(cancelStat.rowCount, 1);
   assert.strictEqual(cancelStat.validRowCount, 0);
 });
+
+test('Test 26: Trường Xuất phụ kiện và Jobcard được khởi tạo rỗng để hiển thị và xuất báo cáo', () => {
+  const row = createMockRow();
+  const res = transformExcelRows([row], 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.items.length, 1);
+  assert.strictEqual(res.items[0]['Xuất phụ kiện'], '');
+  assert.strictEqual(res.items[0]['Jobcard'], '');
+});
+

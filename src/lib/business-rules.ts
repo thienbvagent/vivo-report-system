@@ -14,7 +14,9 @@ export interface ProcessedReportItem {
   'CN trước thuế'?: number | null;
   'Khách hàng': 'TGDĐ' | 'KL';
   'Phương thức thanh toán': 'CN' | 'TM';
+  'Jobcard'?: string;
   'Xuất Bảo Hành': number | string;
+  'Xuất phụ kiện'?: number | string;
   'Xuất Sửa Chữa': number | string;
   'Thời gian lấy máy': string;
   'Ngày báo cáo': string;
@@ -421,13 +423,15 @@ export function transformExcelRows(
       'Số phiếu sửa chữa': normalizeText(row[colPhieu]),
       'Mã vật tư linh kiện': partCode,
       'Tên vật tư': partName,
+      'Xuất Bảo Hành': warrantyExport,
+      'Xuất phụ kiện': '',
+      'Xuất Sửa Chữa': repairExport,
       'Đơn giá': unitPrice,
       'Doanh thu tiền mặt': cashRevenue,
       'Công nợ': receivable,
       'Khách hàng': customer,
       'Phương thức thanh toán': paymentMethod,
-      'Xuất Bảo Hành': warrantyExport,
-      'Xuất Sửa Chữa': repairExport,
+      'Jobcard': '',
       'Thời gian lấy máy': pickupTime,
       'Ngày báo cáo': reportDate,
       'Mã TTBH': fileCenterCode,
