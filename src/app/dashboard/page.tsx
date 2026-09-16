@@ -290,20 +290,30 @@ export default function DashboardPage() {
               <span>{exporting ? 'Đang xuất...' : 'Xuất Google Sheets'}</span>
             </button>
 
-            {/* Download Excel File Button */}
+            {/* Download Tan Tam Debt Report Button */}
             <a
-              href={selectedDate !== 'ALL' ? `/api/export?date=${encodeURIComponent(selectedDate)}` : '#'}
+              href={selectedDate !== 'ALL' ? `/api/export?date=${encodeURIComponent(selectedDate)}&type=tantam` : '#'}
               onClick={e => {
                 if (selectedDate === 'ALL') {
                   e.preventDefault();
-                  alert('Vui lòng chọn một ngày cụ thể (ví dụ: 2026-09-15) trên ô Ngày báo cáo để tải file Excel!');
+                  alert('Vui lòng chọn một ngày cụ thể (ví dụ: 2026-09-15) trên ô Ngày báo cáo để xuất Báo cáo Công Nợ Tận Tâm!');
                 }
               }}
-              className={`flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 || selectedDate === 'ALL' ? 'opacity-50 pointer-events-none' : ''}`}
-              title="Tải trực tiếp file Excel (.xlsx) chuẩn 15 cột về máy tính"
+              className={`flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 || selectedDate === 'ALL' ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Xuất file Báo cáo Công Nợ Tận Tâm chuẩn màu xanh/xanh dương, công thức =SUBTOTAL, =SUM và mã Jobcard"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              <span>Tải File Excel (.xlsx)</span>
+              <span>Báo Cáo Công Nợ Tận Tâm (.xlsx)</span>
+            </a>
+
+            {/* Download Full Excel File Button */}
+            <a
+              href={`/api/export?date=${encodeURIComponent(selectedDate)}&type=full`}
+              className={`flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Tải trực tiếp file Excel (.xlsx) đầy đủ tất cả các cột thông tin hiển thị trên bảng"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Tải Báo Cáo Đầy Đủ (.xlsx)</span>
             </a>
           </div>
         </div>

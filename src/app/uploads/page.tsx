@@ -37,7 +37,7 @@ interface UploadRecordItem {
 export default function UploadsPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ centerCode: string; centerName: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'history'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'portal' | 'history'>('upload');
 
   // Upload state
   const [file, setFile] = useState<File | null>(null);
@@ -45,6 +45,20 @@ export default function UploadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<'upsert' | 'replace'>('upsert');
   const [result, setResult] = useState<any | null>(null);
+
+  // Portal Jobcard upload state
+  const [portalFile, setPortalFile] = useState<File | null>(null);
+  const [portalUploading, setPortalUploading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const [portalResult, setPortalResult] = useState<{
+    totalParsed: number;
+    totalSaved: number;
+    updatedReportsCount: number;
+    matchedTickets: string[];
+    message: string;
+  } | null>(null);
+  const [portalStats, setPortalStats] = useState<{ totalCount: number; matchedCount: number } | null>(null);
+
   // Warnings inspection state
   const [showWarningsTable, setShowWarningsTable] = useState(true);
   const [warningFilter, setWarningFilter] = useState<'ALL' | 'PICKUP' | 'PRICE' | 'PART'>('ALL');
@@ -83,10 +97,67 @@ export default function UploadsPage() {
     }
   };
 
+  const fetchPortalStats = async () => {
+    try {
+      const res = await fetch('/api/uploads/portal');
+      const data = await res.json();
+      if (data.success && data.stats) {
+        setPortalStats(data.stats);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   useEffect(() => {
     fetchUser();
     fetchHistory();
+    fetchPortalStats();
   }, [router]);
+
+  const handlePortalFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setPortalFile(e.target.files[0]);
+      setPortalError(null);
+      setPortalResult(null);
+    }
+  };
+
+  const handlePortalUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!portalFile) return;
+
+    setPortalUploading(true);
+    setPortalError(null);
+    setPortalResult(null);
+
+    const formData = new FormData();
+    formData.append('file', portalFile);
+
+    try {
+      const res = await fetch('/api/uploads/portal', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPortalError(data.error || 'Nạp file Portal Jobcard thất bại.');
+      } else {
+        setPortalResult({
+          totalParsed: data.totalParsed,
+          totalSaved: data.totalSaved,
+          updatedReportsCount: data.updatedReportsCount,
+          matchedTickets: data.matchedTickets || [],
+          message: data.message
+        });
+        fetchPortalStats();
+      }
+    } catch (err: any) {
+      setPortalError('Lỗi kết nối mạng: ' + err.message);
+    } finally {
+      setPortalUploading(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -178,7 +249,7 @@ export default function UploadsPage() {
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-6">
         {/* Navigation Tabs */}
-        <div className="flex items-center space-x-2 border-b border-slate-200 mb-6 bg-white px-4 py-2 rounded-xl shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 mb-6 bg-white px-4 py-2 rounded-xl shadow-sm">
           <button
             onClick={() => setActiveTab('upload')}
             className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-bold transition ${
@@ -188,7 +259,29 @@ export default function UploadsPage() {
             }`}
           >
             <UploadCloud className="w-4 h-4" />
-            <span>Tải Lên & Phân Tích</span>
+            <span>Tải Lên Báo Cáo Sửa Chữa (Vivo)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('portal');
+              fetchPortalStats();
+            }}
+            className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-bold transition relative ${
+              activeTab === 'portal'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Nạp Jobcard Portal TGDĐ</span>
+            {portalStats && portalStats.totalCount > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
+                activeTab === 'portal' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-800'
+              }`}>
+                {portalStats.totalCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -451,6 +544,25 @@ export default function UploadsPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Gợi ý nạp Jobcard Portal */}
+                  <div className="mt-4 p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="text-xs text-indigo-900">
+                      <strong className="block text-sm font-bold text-indigo-950">💡 Bạn có file danh sách Jobcard từ Portal TGDĐ?</strong>
+                      <span>Tải lên file Jobcard để hệ thống tự động khớp mã vận đơn và điền cột Jobcard cho các phiếu sửa chữa.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('portal');
+                        fetchPortalStats();
+                      }}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shrink-0 transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>Nạp Jobcard Portal</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -584,7 +696,142 @@ export default function UploadsPage() {
           </div>
         )}
 
-        {/* TAB 2: UPLOAD HISTORY & SYNC STATUS */}
+        {/* TAB 2: PORTAL JOBCARDS */}
+        {activeTab === 'portal' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 border-b border-slate-200 bg-slate-50">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-xl font-black text-slate-900 flex items-center space-x-2">
+                      <FileSpreadsheet className="w-6 h-6 text-indigo-600" />
+                      <span>Tải Lên Danh Sách Jobcard Portal TGDĐ (.xlsx)</span>
+                    </h1>
+                    <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+                      Nạp file danh sách Jobcard từ Portal Thế Giới Di Động. Hệ thống tự động trích xuất mã <strong>MÃ JOBCARD</strong> dựa trên <strong>BILL CHUYỂN ĐI TTBH</strong> và khớp với <strong>Số vận đơn nhanh (nhận)</strong> của báo cáo Vivo để tự động điền cột <strong>Jobcard</strong>.
+                    </p>
+                  </div>
+                  {portalStats && (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-xs flex-shrink-0 text-indigo-900 space-y-1 shadow-sm">
+                      <div className="flex items-center justify-between gap-4">
+                        <span>Jobcard đã lưu:</span>
+                        <strong className="text-sm font-mono text-indigo-700">{portalStats.totalCount}</strong>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span>Phiếu sửa chữa đã khớp:</span>
+                        <strong className="text-sm font-mono text-emerald-700">{portalStats.matchedCount}</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <form onSubmit={handlePortalUpload} className="p-6 space-y-6">
+                {portalError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm flex items-start space-x-3">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">Lỗi nạp file Jobcard</div>
+                      <div>{portalError}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Drag and drop zone */}
+                <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 text-center hover:border-indigo-500 transition cursor-pointer bg-indigo-50/20">
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    onChange={handlePortalFileChange}
+                    className="hidden"
+                    id="portal-file-input"
+                  />
+                  <label htmlFor="portal-file-input" className="cursor-pointer block">
+                    <FileSpreadsheet className="w-12 h-12 text-indigo-500 mx-auto mb-3" />
+                    <div className="text-sm font-semibold text-slate-800">
+                      {portalFile ? portalFile.name : 'Bấm vào đây để chọn file Portal Jobcard hoặc kéo thả file'}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      Hỗ trợ: .xlsx, .xls (file chứa cột BILL CHUYỂN ĐI TTBH và MÃ JOBCARD)
+                    </div>
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!portalFile || portalUploading}
+                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50"
+                >
+                  {portalUploading ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Đang phân tích và khớp mã Jobcard...
+                    </span>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-5 h-5" />
+                      <span>Tải Lên & Khớp Mã Jobcard</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Portal Result */}
+            {portalResult && (
+              <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden p-6 space-y-4">
+                <div className="flex items-center gap-3 text-emerald-700 font-bold text-lg">
+                  <CheckCircle className="w-6 h-6 flex-shrink-0" />
+                  <span>Xử lý file Portal Jobcard thành công!</span>
+                </div>
+
+                <p className="text-sm text-slate-600">{portalResult.message}</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div className="text-xs text-slate-500 font-medium">Tổng Jobcard trong file</div>
+                    <div className="text-2xl font-black text-slate-800 font-mono mt-1">{portalResult.totalParsed}</div>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                    <div className="text-xs text-indigo-700 font-medium">Jobcard nạp vào hệ thống</div>
+                    <div className="text-2xl font-black text-indigo-700 font-mono mt-1">{portalResult.totalSaved}</div>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <div className="text-xs text-emerald-700 font-medium">Linh kiện được khớp Jobcard</div>
+                    <div className="text-2xl font-black text-emerald-700 font-mono mt-1">{portalResult.updatedReportsCount}</div>
+                  </div>
+                </div>
+
+                {portalResult.matchedTickets && portalResult.matchedTickets.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div className="text-xs font-bold text-slate-700 mb-2">
+                      Danh sách các số phiếu sửa chữa đã khớp mã Jobcard ({portalResult.matchedTickets.length} phiếu):
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                      {portalResult.matchedTickets.map((t, idx) => (
+                        <span key={idx} className="px-2.5 py-1 bg-white border border-blue-200 text-blue-700 font-mono font-bold text-xs rounded-lg shadow-sm">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => router.push('/dashboard')}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow transition flex items-center gap-2"
+                  >
+                    <span>Xem Bảng Báo Cáo Sửa Chữa</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: UPLOAD HISTORY & SYNC STATUS */}
         {activeTab === 'history' && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-6 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

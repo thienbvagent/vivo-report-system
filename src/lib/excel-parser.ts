@@ -83,3 +83,87 @@ export function readExcelBuffer(buffer: Buffer): XLSX.WorkBook {
   const safeBuffer = fixZip64Buffer(buffer);
   return XLSX.read(safeBuffer, { type: 'buffer' });
 }
+
+export interface PortalJobcardParsedResult {
+  success: boolean;
+  error?: string;
+  records: {
+    billCode: string;
+    jobcardCode: string;
+    imei?: string;
+    customerName?: string;
+    phone?: string;
+    supermarket?: string;
+  }[];
+}
+
+export function parsePortalJobcardFile(buffer: Buffer): PortalJobcardParsedResult {
+  try {
+    const wb = readExcelBuffer(buffer);
+    if (!wb.SheetNames || wb.SheetNames.length === 0) {
+      return { success: false, error: 'File Excel không có sheet dữ liệu nào.', records: [] };
+    }
+
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    if (!rawRows || rawRows.length === 0) {
+      return { success: false, error: 'File Excel không chứa dữ liệu dòng nào.', records: [] };
+    }
+
+    const firstRow = rawRows[0];
+    const allKeys = Object.keys(firstRow);
+
+    const findKey = (target: string) => {
+      const norm = target.normalize('NFKC').toLowerCase().trim();
+      return allKeys.find(k => k.normalize('NFKC').toLowerCase().trim() === norm) || null;
+    };
+
+    const colBill = findKey('BILL CHUYỂN ĐI TTBH') || findKey('BILL CHUYỂN ĐI') || allKeys.find(k => k.toLowerCase().includes('bill chuyển đi'));
+    const colJobcard = findKey('MÃ JOBCARD') || findKey('JOBCARD') || allKeys.find(k => k.toLowerCase().includes('jobcard'));
+
+    if (!colBill) {
+      return { success: false, error: 'Không tìm thấy cột "BILL CHUYỂN ĐI TTBH" trong file Portal.', records: [] };
+    }
+    if (!colJobcard) {
+      return { success: false, error: 'Không tìm thấy cột "MÃ JOBCARD" trong file Portal.', records: [] };
+    }
+
+    const colImei = findKey('IMEI') || allKeys.find(k => k.toLowerCase().includes('imei'));
+    const colTenKhach = findKey('TÊN KHÁCH') || allKeys.find(k => k.toLowerCase().includes('tên khách'));
+    const colSdt = findKey('SĐT') || findKey('SDT') || allKeys.find(k => k.toLowerCase().includes('sđt'));
+    const colSieuThi = findKey('SIÊU THỊ') || allKeys.find(k => k.toLowerCase().includes('siêu thị'));
+
+    const records: PortalJobcardParsedResult['records'] = [];
+    const seenBills = new Set<string>();
+
+    for (const row of rawRows) {
+      const billRaw = String(row[colBill] || '').trim().replace(/\s+/g, '').toUpperCase();
+      const jobcardRaw = String(row[colJobcard] || '').trim();
+
+      if (!billRaw || !jobcardRaw) continue;
+      if (seenBills.has(billRaw)) continue;
+      seenBills.add(billRaw);
+
+      records.push({
+        billCode: billRaw,
+        jobcardCode: jobcardRaw,
+        imei: colImei ? String(row[colImei] || '').trim() : undefined,
+        customerName: colTenKhach ? String(row[colTenKhach] || '').trim() : undefined,
+        phone: colSdt ? String(row[colSdt] || '').trim() : undefined,
+        supermarket: colSieuThi ? String(row[colSieuThi] || '').trim() : undefined
+      });
+    }
+
+    return {
+      success: true,
+      records
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: `Lỗi khi đọc file Portal: ${err.message}`,
+      records: []
+    };
+  }
+}
+

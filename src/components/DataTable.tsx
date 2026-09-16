@@ -268,8 +268,14 @@ export default function DataTable({ rows }: DataTableProps) {
                         {r['Phương thức thanh toán']}
                       </span>
                     </td>
-                    <td className="py-2 px-1.5 text-center font-mono text-xs whitespace-nowrap text-slate-400">
-                      {r['Jobcard'] || ''}
+                    <td className="py-2 px-1.5 text-center font-mono text-xs whitespace-nowrap">
+                      {r['Jobcard'] ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" title={`Mã Jobcard: ${r['Jobcard']}`}>
+                          {r['Jobcard']}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
                     </td>
                     <td className="py-2 px-2 text-slate-500 font-mono text-xs whitespace-nowrap">
                       {r['Thời gian lấy máy']}

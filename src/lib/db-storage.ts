@@ -29,6 +29,16 @@ export interface UploadRecord {
   errorMessage?: string;
 }
 
+export interface PortalJobcardRecord {
+  billCode: string;
+  jobcardCode: string;
+  imei?: string;
+  customerName?: string;
+  phone?: string;
+  supermarket?: string;
+  createdAt?: string;
+}
+
 let _dbInstance: DatabaseSync | null = null;
 let _currentDbPath: string | null = null;
 
@@ -124,12 +134,39 @@ export function initDatabase(): DatabaseSync {
       solution TEXT,
       source_row_number INTEGER,
       upload_id TEXT,
-      import_time TEXT
+      import_time TEXT,
+      inbound_waybill TEXT,
+      jobcard TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_reports_center_date ON reports (center_code, report_date);
     CREATE INDEX IF NOT EXISTS idx_reports_center_ticket ON reports (center_code, ticket_id);
+
+    CREATE TABLE IF NOT EXISTS portal_jobcards (
+      bill_code TEXT PRIMARY KEY,
+      jobcard_code TEXT NOT NULL,
+      imei TEXT,
+      customer_name TEXT,
+      phone TEXT,
+      supermarket TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_portal_jobcards_bill ON portal_jobcards (bill_code);
   `);
+
+  // Ensure reports columns exist in pre-existing databases
+  try {
+    const reportCols: any[] = db.prepare('PRAGMA table_info(reports);').all();
+    const colNames = new Set(reportCols.map(c => c.name));
+    if (!colNames.has('inbound_waybill')) {
+      db.exec('ALTER TABLE reports ADD COLUMN inbound_waybill TEXT;');
+    }
+    if (!colNames.has('jobcard')) {
+      db.exec('ALTER TABLE reports ADD COLUMN jobcard TEXT;');
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_reports_waybill ON reports (inbound_waybill);');
+  } catch {}
 
   // Auto-migration from legacy JSON files if tables are empty
   migrateLegacyJsonIfEmpty(db, dataDir);
@@ -232,7 +269,8 @@ function rowToReportItem(r: any): ProcessedReportItem {
     'CN trước thuế': r.debt_before_tax !== null ? r.debt_before_tax : null,
     'Khách hàng': r.customer_type as 'TGDĐ' | 'KL',
     'Phương thức thanh toán': r.payment_method as 'CN' | 'TM',
-    'Jobcard': '',
+    'Jobcard': r.jobcard || '',
+    'Số vận đơn nhanh (nhận)': r.inbound_waybill || '',
     'Thời gian lấy máy': r.pickup_time || '',
     'Ngày báo cáo': r.report_date,
     'Mã TTBH': r.center_code,
@@ -349,6 +387,8 @@ function saveReportItemsInternal(
 
   db.exec('BEGIN IMMEDIATE;');
   try {
+    const jobcardMap = getJobcardMapInternal(db);
+
     if (mode === 'replace_center') {
       const centerCode = items[0]['Mã TTBH'];
       if (items.some(item => item['Mã TTBH'] !== centerCode)) {
@@ -362,19 +402,26 @@ function saveReportItemsInternal(
           debt_revenue, debt_after_discount, debt_before_tax,
           customer_type, payment_method, warranty_export, repair_export,
           pickup_time, report_date, bring_type, repair_type, part_type, solution,
-          source_row_number, upload_id, import_time
+          source_row_number, upload_id, import_time, inbound_waybill, jobcard
         ) VALUES (
           ?, ?, ?, ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?
+          ?, ?, ?, ?, ?
         )
       `);
 
       for (const item of items) {
         const id = reportKey(item);
+        const cleanWaybill = String(item['Số vận đơn nhanh (nhận)'] || '').trim().replace(/\s+/g, '');
+        let jc = item['Jobcard'] || '';
+        if (!jc && cleanWaybill && jobcardMap.has(cleanWaybill)) {
+          jc = jobcardMap.get(cleanWaybill)!;
+          item['Jobcard'] = jc;
+        }
+
         insertStmt.run(
           id,
           item['Mã TTBH'],
@@ -400,7 +447,9 @@ function saveReportItemsInternal(
           item['Phương án giải quyết'] || '',
           item['Source Row Number'] ?? null,
           item['Upload ID'] || null,
-          item['Thời gian import'] || null
+          item['Thời gian import'] || null,
+          cleanWaybill || null,
+          jc || null
         );
       }
       inserted = items.length;
@@ -413,14 +462,14 @@ function saveReportItemsInternal(
           debt_revenue, debt_after_discount, debt_before_tax,
           customer_type, payment_method, warranty_export, repair_export,
           pickup_time, report_date, bring_type, repair_type, part_type, solution,
-          source_row_number, upload_id, import_time
+          source_row_number, upload_id, import_time, inbound_waybill, jobcard
         ) VALUES (
           ?, ?, ?, ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?,
           ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?
+          ?, ?, ?, ?, ?
         )
       `);
       const updateStmt = db.prepare(`
@@ -430,12 +479,21 @@ function saveReportItemsInternal(
           debt_revenue = ?, debt_after_discount = ?, debt_before_tax = ?,
           customer_type = ?, payment_method = ?, warranty_export = ?, repair_export = ?,
           pickup_time = ?, report_date = ?, bring_type = ?, repair_type = ?, part_type = ?, solution = ?,
-          source_row_number = ?, upload_id = ?, import_time = ?
+          source_row_number = ?, upload_id = ?, import_time = ?,
+          inbound_waybill = ?,
+          jobcard = COALESCE(NULLIF(?, ''), jobcard)
         WHERE id = ?
       `);
 
       for (const item of items) {
         const id = reportKey(item);
+        const cleanWaybill = String(item['Số vận đơn nhanh (nhận)'] || '').trim().replace(/\s+/g, '').toUpperCase();
+        let jc = item['Jobcard'] || '';
+        if (!jc && cleanWaybill && jobcardMap.has(cleanWaybill)) {
+          jc = jobcardMap.get(cleanWaybill)!;
+          item['Jobcard'] = jc;
+        }
+
         const existing = checkStmt.get(id);
         if (existing) {
           updateStmt.run(
@@ -462,6 +520,8 @@ function saveReportItemsInternal(
             item['Source Row Number'] ?? null,
             item['Upload ID'] || null,
             item['Thời gian import'] || null,
+            cleanWaybill || null,
+            jc || null,
             id
           );
           updated++;
@@ -491,7 +551,9 @@ function saveReportItemsInternal(
             item['Phương án giải quyết'] || '',
             item['Source Row Number'] ?? null,
             item['Upload ID'] || null,
-            item['Thời gian import'] || null
+            item['Thời gian import'] || null,
+            cleanWaybill || null,
+            jc || null
           );
           inserted++;
         }
@@ -504,6 +566,115 @@ function saveReportItemsInternal(
   }
 
   return { inserted, updated };
+}
+
+function getJobcardMapInternal(db: DatabaseSync): Map<string, string> {
+  const map = new Map<string, string>();
+  try {
+    const rows: any[] = db.prepare('SELECT bill_code, jobcard_code FROM portal_jobcards').all();
+    for (const r of rows) {
+      if (r.bill_code && r.jobcard_code) {
+        map.set(String(r.bill_code).trim().replace(/\s+/g, '').toUpperCase(), String(r.jobcard_code).trim());
+      }
+    }
+  } catch {}
+  return map;
+}
+
+export function getJobcardMap(): Map<string, string> {
+  const db = initDatabase();
+  return getJobcardMapInternal(db);
+}
+
+export function savePortalJobcards(records: PortalJobcardRecord[]): {
+  totalSaved: number;
+  updatedReportsCount: number;
+  matchedTickets: string[];
+} {
+  const db = initDatabase();
+  let totalSaved = 0;
+
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    const insertStmt = db.prepare(`
+      INSERT INTO portal_jobcards (bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(bill_code) DO UPDATE SET
+        jobcard_code = excluded.jobcard_code,
+        imei = COALESCE(excluded.imei, portal_jobcards.imei),
+        customer_name = COALESCE(excluded.customer_name, portal_jobcards.customer_name),
+        phone = COALESCE(excluded.phone, portal_jobcards.phone),
+        supermarket = COALESCE(excluded.supermarket, portal_jobcards.supermarket)
+    `);
+
+    const now = new Date().toISOString();
+    for (const r of records) {
+      const cleanBill = String(r.billCode || '').trim().replace(/\s+/g, '').toUpperCase();
+      const cleanJobcard = String(r.jobcardCode || '').trim();
+      if (!cleanBill || !cleanJobcard) continue;
+
+      insertStmt.run(
+        cleanBill,
+        cleanJobcard,
+        r.imei || null,
+        r.customerName || null,
+        r.phone || null,
+        r.supermarket || null,
+        r.createdAt || now
+      );
+      totalSaved++;
+    }
+
+    // Retroactive update on reports table (case-insensitive matching)
+    const updateReportsStmt = db.prepare(`
+      UPDATE reports
+      SET jobcard = (
+        SELECT jobcard_code FROM portal_jobcards
+        WHERE portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
+      )
+      WHERE inbound_waybill IS NOT NULL 
+        AND TRIM(inbound_waybill) != ''
+        AND EXISTS (
+          SELECT 1 FROM portal_jobcards
+          WHERE portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
+        )
+    `);
+    const updateRes = updateReportsStmt.run();
+    const updatedReportsCount = (updateRes as any)?.changes || 0;
+
+    const matchedRows: any[] = db.prepare(`
+      SELECT DISTINCT ticket_id FROM reports
+      WHERE jobcard IS NOT NULL AND jobcard != ''
+    `).all();
+    const matchedTickets = matchedRows.map(r => r.ticket_id);
+
+    db.exec('COMMIT;');
+    return {
+      totalSaved,
+      updatedReportsCount,
+      matchedTickets
+    };
+  } catch (err) {
+    db.exec('ROLLBACK;');
+    throw err;
+  }
+}
+
+export function getPortalJobcardsStats(): { totalCount: number; matchedCount: number } {
+  const db = initDatabase();
+  try {
+    const totalRow: any = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards').get();
+    const matchedRow: any = db.prepare(`
+      SELECT COUNT(DISTINCT ticket_id) as cnt FROM reports 
+      WHERE jobcard IS NOT NULL AND jobcard != ''
+    `).get();
+    return {
+      totalCount: totalRow?.cnt || 0,
+      matchedCount: matchedRow?.cnt || 0
+    };
+  } catch {
+    return { totalCount: 0, matchedCount: 0 };
+  }
 }
 
 export function saveReportItems(

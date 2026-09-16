@@ -15,6 +15,7 @@ export interface ProcessedReportItem {
   'Khách hàng': 'TGDĐ' | 'KL';
   'Phương thức thanh toán': 'CN' | 'TM';
   'Jobcard'?: string;
+  'Số vận đơn nhanh (nhận)'?: string;
   'Xuất Bảo Hành': number | string;
   'Xuất phụ kiện'?: number | string;
   'Xuất Sửa Chữa': number | string;
@@ -142,7 +143,8 @@ export function parseMoneyPreserveNull(val: any): number | null {
 export function transformExcelRows(
   rows: RawExcelRow[],
   expectedCenterCode: string,
-  expectedCenterName: string
+  expectedCenterName: string,
+  jobcardMap?: Map<string, string>
 ): TransformResult {
   const inputRows = rows.length;
   if (inputRows === 0) {
@@ -163,11 +165,11 @@ export function transformExcelRows(
       availableReportDates: [],
       latestReportDate: '',
       items: [],
-      warnings: []
+      warnings: ['File Excel rỗng']
     };
   }
 
-  // 1. Dò tìm header bằng tên header
+  // 1. Validate và map tên cột
   const headerValidation = validateHeaders(rows);
   if (!headerValidation.valid) {
     return {
@@ -208,6 +210,7 @@ export function transformExcelRows(
   // Cột Giá bán lẻ đề nghị (Phương án 2: Ưu tiên lấy Đơn giá linh kiện)
   const allRowKeys = getAllRowKeys(rows);
   const colGiaBanLe = findHeaderKey(allRowKeys, 'Giá bán lẻ đề nghị');
+  const colVanDonNhan = findHeaderKey(allRowKeys, 'Số vận đơn nhanh (nhận)');
 
   // 2. Validate Mã tổ chức: phải đồng nhất và trùng với expectedCenterCode
   const detectedCenters = new Set<string>();
@@ -417,7 +420,12 @@ export function transformExcelRows(
 
 
 
-// partCode & partName already assigned above
+    const rawWaybill = colVanDonNhan ? normalizeText(row[colVanDonNhan]) : '';
+    const cleanWaybill = rawWaybill.replace(/\s+/g, '').toUpperCase();
+    let matchedJobcard = '';
+    if (jobcardMap && cleanWaybill && jobcardMap.has(cleanWaybill)) {
+      matchedJobcard = jobcardMap.get(cleanWaybill) || '';
+    }
 
     items.push({
       'Số phiếu sửa chữa': normalizeText(row[colPhieu]),
@@ -431,7 +439,8 @@ export function transformExcelRows(
       'Công nợ': receivable,
       'Khách hàng': customer,
       'Phương thức thanh toán': paymentMethod,
-      'Jobcard': '',
+      'Jobcard': matchedJobcard,
+      'Số vận đơn nhanh (nhận)': cleanWaybill,
       'Thời gian lấy máy': pickupTime,
       'Ngày báo cáo': reportDate,
       'Mã TTBH': fileCenterCode,
