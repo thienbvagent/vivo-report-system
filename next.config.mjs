@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  serverExternalPackages: ['bcryptjs'],
+  serverExternalPackages: ['bcryptjs', 'node:sqlite'],
   turbopack: {
     root: process.cwd()
   }

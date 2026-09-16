@@ -42,11 +42,12 @@ function item(
 }
 
 beforeEach(() => {
-  fs.writeFileSync(path.join(testDataDir, 'reports.json'), '[]', 'utf-8');
-  fs.writeFileSync(path.join(testDataDir, 'uploads.json'), '[]', 'utf-8');
+  const db = storage.initDatabase();
+  db.exec('DELETE FROM reports; DELETE FROM uploads;');
 });
 
 after(() => {
+  storage.closeDb();
   fs.rmSync(testDataDir, { recursive: true, force: true });
 });
 
@@ -97,4 +98,46 @@ test('ghi đè chỉ thay dữ liệu của đúng TTBH và file rỗng không x
   const emptyReplace = storage.saveReportItems([], 'replace_center');
   assert.deepEqual(emptyReplace, { inserted: 0, updated: 0 });
   assert.equal(storage.getReportItems('R4001003', 'ALL').length, 1);
+});
+
+test('quản lý upload record và cập nhật trạng thái retry', () => {
+  storage.saveUploadRecord({
+    uploadId: 'UPL-001',
+    centerCode: 'R4001003',
+    fileName: 'test.xlsx',
+    fileHash: 'hash-123',
+    uploadTime: '2026-09-16T10:00:00Z',
+    inputRows: 10,
+    validRows: 8,
+    warningRows: 2,
+    status: 'LOCAL_ONLY',
+    errorMessage: 'n8n webhook timeout'
+  });
+
+  const upload = storage.findUploadByHash('R4001003', 'hash-123');
+  assert.ok(upload);
+  assert.equal(upload.status, 'LOCAL_ONLY');
+  assert.equal(upload.errorMessage, 'n8n webhook timeout');
+
+  storage.updateUploadStatus('UPL-001', 'SUCCESS');
+  const updated = storage.findUploadByHash('R4001003', 'hash-123');
+  assert.equal(updated?.status, 'SUCCESS');
+  assert.equal(updated?.errorMessage, undefined);
+});
+
+test('giao dịch ACID bảo vệ tính toàn vẹn khi có lỗi', () => {
+  storage.saveReportItems([item('TICKET-VALID', 'PART-1', '2026-09-13 08:00:00', 100)]);
+  assert.equal(storage.getReportItems('R4001003', 'ALL').length, 1);
+
+  // Thử ghi đè nhưng gây lỗi do nhiều TTBH
+  assert.throws(() => {
+    storage.saveReportItems([
+      item('TICKET-FAIL-1', 'PART-1', '2026-09-13 08:00:00', 100, 'R4001003'),
+      item('TICKET-FAIL-2', 'PART-2', '2026-09-13 08:00:00', 200, 'R4001001')
+    ], 'replace_center');
+  });
+
+  // Dữ liệu cũ vẫn nguyên vẹn 100% nhờ rollback transaction
+  assert.equal(storage.getReportItems('R4001003', 'ALL').length, 1);
+  assert.equal(storage.getReportItems('R4001003', 'ALL')[0]['Số phiếu sửa chữa'], 'TICKET-VALID');
 });

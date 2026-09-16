@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.js
@@ -15,9 +15,9 @@
 
 # Local data & environment
 .env*.local
-.data/reports.json
-.data/uploads.json
-.data/users.json
+.data/*
+!.data/.gitkeep
+*.db*
 *.log
 npm-debug.log*
 

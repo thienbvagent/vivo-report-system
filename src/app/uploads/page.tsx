@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { UploadCloud, FileSpreadsheet, CheckCircle, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, CheckCircle, AlertTriangle, AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
 
 export default function UploadsPage() {
   const router = useRouter();
@@ -13,6 +13,8 @@ export default function UploadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<'upsert' | 'replace'>('upsert');
   const [result, setResult] = useState<any | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryNotice, setRetryNotice] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -65,6 +67,31 @@ export default function UploadsPage() {
     } catch (err: any) {
       setError('Lỗi kết nối: ' + err.message);
       setUploading(false);
+    }
+  };
+
+  const handleRetrySync = async () => {
+    setRetrying(true);
+    setRetryNotice(null);
+    try {
+      const res = await fetch('/api/sync-retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: result?.uploadId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRetryNotice(data.message || 'Đã đồng bộ thành công sang n8n/Google Sheets!');
+        if (result) {
+          setResult({ ...result, n8nStatus: 'SYNCED_N8N' });
+        }
+      } else {
+        setRetryNotice('Đồng bộ thất bại: ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch (err: any) {
+      setRetryNotice('Lỗi: ' + err.message);
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -199,9 +226,21 @@ export default function UploadsPage() {
               )}
 
               {result.n8nStatus === 'FAILED_N8N' && (
-                <div className="mb-4 p-4 bg-amber-100 border border-amber-300 rounded-xl text-xs sm:text-sm text-amber-950">
-                  <strong>Dữ liệu đã được cập nhật trên hệ thống web nhưng chưa đồng bộ sang n8n/Google Sheets.</strong>
-                  <div className="mt-1 break-words">{result.n8nError || 'Không nhận được xác nhận từ n8n.'}</div>
+                <div className="mb-4 p-4 bg-amber-100 border border-amber-300 rounded-xl text-xs sm:text-sm text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex-1">
+                    <strong>Dữ liệu đã được lưu an toàn trên hệ thống web nhưng chưa đồng bộ sang n8n/Google Sheets.</strong>
+                    <div className="mt-1 break-words text-xs text-amber-900">{result.n8nError || 'Không nhận được xác nhận từ n8n.'}</div>
+                    {retryNotice && <div className="mt-2 font-bold text-xs text-blue-800">{retryNotice}</div>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRetrySync}
+                    disabled={retrying}
+                    className="flex-shrink-0 px-3.5 py-2 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center space-x-1.5 self-start sm:self-center"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${retrying ? 'animate-spin' : ''}`} />
+                    <span>{retrying ? 'Đang thử lại...' : 'Đồng Bộ Lại Sang n8n'}</span>
+                  </button>
                 </div>
               )}
 

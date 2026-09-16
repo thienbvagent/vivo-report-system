@@ -15,21 +15,35 @@ export interface N8nImportResponse {
   latestReportDate?: string;
 }
 
+function getRequiredEnv(key: string): string {
+  const val = process.env[key];
+  if (!val || !val.trim()) {
+    throw new Error(`Cấu hình hệ thống thiếu biến môi trường bắt buộc: ${key}. Vui lòng kiểm tra file .env.local hoặc biến môi trường VPS.`);
+  }
+  return val.trim();
+}
+
 export async function forwardImportToN8n(
   fileBuffer: Buffer,
   fileName: string,
   centerCode: string,
   centerName: string,
-  uploadId: string
+  uploadId: string,
+  mode: 'upsert' | 'replace' = 'upsert',
+  items?: any[]
 ): Promise<N8nImportResponse> {
-  const webhookUrl = process.env.N8N_IMPORT_WEBHOOK_URL || 'https://n8n.pdarc.space/webhook/vivo-report-import';
-  const secret = process.env.N8N_WEBHOOK_SECRET || 'VivoSecretKey@2026';
+  const webhookUrl = getRequiredEnv('N8N_IMPORT_WEBHOOK_URL');
+  const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
 
   const formData = new FormData();
   formData.append('file', new Blob([new Uint8Array(fileBuffer)]), fileName);
   formData.append('center_code', centerCode);
   formData.append('center_name', centerName);
   formData.append('upload_id', uploadId);
+  formData.append('mode', mode);
+  if (items && items.length > 0) {
+    formData.append('items_json', JSON.stringify(items));
+  }
 
   try {
     const res = await fetch(webhookUrl, {
@@ -59,8 +73,8 @@ export async function forwardImportToN8n(
 }
 
 export async function queryDataFromN8n(centerCode: string, reportDate: string) {
-  const webhookUrl = process.env.N8N_QUERY_WEBHOOK_URL || 'https://n8n.pdarc.space/webhook/vivo-report-query';
-  const secret = process.env.N8N_WEBHOOK_SECRET || 'VivoSecretKey@2026';
+  const webhookUrl = getRequiredEnv('N8N_QUERY_WEBHOOK_URL');
+  const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
 
   const res = await fetch(webhookUrl, {
     method: 'POST',
@@ -86,8 +100,8 @@ export async function exportBaoCaoToN8n(
   items?: any[],
   targetSheet?: string
 ) {
-  const webhookUrl = process.env.N8N_EXPORT_WEBHOOK_URL || 'https://n8n.pdarc.space/webhook/vivo-report-export';
-  const secret = process.env.N8N_WEBHOOK_SECRET || 'VivoSecretKey@2026';
+  const webhookUrl = getRequiredEnv('N8N_EXPORT_WEBHOOK_URL');
+  const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
 
   const defaultMonthYear = (() => {
     const d = reportDate && reportDate !== 'ALL' ? reportDate.split('-') : [];

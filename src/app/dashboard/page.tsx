@@ -29,6 +29,8 @@ export default function DashboardPage() {
     totalRepairExport: 0
   });
 
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [retryingSync, setRetryingSync] = useState<boolean>(false);
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -76,6 +78,7 @@ export default function DashboardPage() {
           setDateCounts(data.dateCounts || {});
           setTotalAllRows(data.totalAllRows || 0);
           setSelectedDate(data.selectedDate || 'ALL');
+          setPendingSyncCount(data.pendingSyncCount || 0);
           setRows(data.rows || []);
           setSummary(data.summary || {
             totalRows: 0,
@@ -90,6 +93,28 @@ export default function DashboardPage() {
         }
       })
       .finally(() => setLoading(false));
+  };
+
+  const handleRetryAllSync = async () => {
+    setRetryingSync(true);
+    try {
+      const res = await fetch('/api/sync-retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'Đã đồng bộ lại thành công sang n8n / Google Sheets!');
+        fetchReportData(selectedDate);
+      } else {
+        alert('Đồng bộ thất bại: ' + (data.error || 'Lỗi không xác định'));
+      }
+    } catch (err: any) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setRetryingSync(false);
+    }
   };
 
   useEffect(() => {
@@ -306,6 +331,26 @@ export default function DashboardPage() {
             </a>
           </div>
         </div>
+
+        {/* Pending Sync Banner */}
+        {pendingSyncCount > 0 && (
+          <div className="p-4 mb-6 rounded-xl border bg-amber-50 border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-600" />
+              <span className="text-xs sm:text-sm font-medium">
+                Đang có <strong>{pendingSyncCount}</strong> lần tải lên được lưu an toàn trên máy chủ nhưng chưa đồng bộ hoàn tất sang n8n / Google Sheets.
+              </span>
+            </div>
+            <button
+              onClick={handleRetryAllSync}
+              disabled={retryingSync}
+              className="flex-shrink-0 px-4 py-2 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center space-x-1.5 self-start sm:self-center"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${retryingSync ? 'animate-spin' : ''}`} />
+              <span>{retryingSync ? 'Đang đồng bộ lại...' : 'Đồng Bộ Lại n8n Ngay'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Google Sheets Link Bar */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-3">

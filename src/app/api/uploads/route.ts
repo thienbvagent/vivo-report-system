@@ -52,13 +52,15 @@ export async function POST(req: NextRequest) {
     }
     const buffer = fixZip64Buffer(rawBuffer);
 
-    // 2. Chống upload trùng file qua SHA-256
+    const mode = (formData.get('mode') as string) === 'replace' ? 'replace_center' : 'upsert';
+
+    // 2. Chống upload trùng file qua SHA-256 (chỉ chặn khi lần trước đã SUCCESS và không phải chế độ replace)
     const fileHash = calculateFileHash(rawBuffer);
     const existingUpload = findUploadByHash(session.centerCode, fileHash);
-    if (existingUpload) {
+    if (existingUpload && existingUpload.status === 'SUCCESS' && mode !== 'replace_center') {
       return NextResponse.json({
         success: false,
-        error: `File này đã được tải lên và xử lý trước đó vào lúc ${existingUpload.uploadTime} (Tên file: ${existingUpload.fileName}).`,
+        error: `File này đã được tải lên và đồng bộ thành công trước đó vào lúc ${existingUpload.uploadTime} (Tên file: ${existingUpload.fileName}). Nếu muốn tải lại, vui lòng chọn chế độ "Ghi đè hoàn toàn TTBH".`,
         duplicate: true
       }, { status: 409 });
     }
@@ -84,7 +86,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Lưu/cập nhật dữ liệu cục bộ trước, sau đó mới đồng bộ n8n.
-    const mode = (formData.get('mode') as string) === 'replace' ? 'replace_center' : 'upsert';
     const importTime = new Date().toISOString();
     const reportItems = transformResult.items.map(item => ({
       ...item,
@@ -106,7 +107,9 @@ export async function POST(req: NextRequest) {
           file.name,
           session.centerCode,
           session.centerName,
-          uploadId
+          uploadId,
+          mode === 'replace_center' ? 'replace' : 'upsert',
+          transformResult.items
         );
         if (n8nRes.success) {
           n8nStatus = 'SYNCED_N8N';
@@ -131,7 +134,8 @@ export async function POST(req: NextRequest) {
       warningRows: transformResult.warningRows,
       status: transformResult.validRows === 0
         ? 'NO_DATA'
-        : n8nStatus === 'SYNCED_N8N' ? 'SUCCESS' : 'LOCAL_ONLY'
+        : n8nStatus === 'SYNCED_N8N' ? 'SUCCESS' : 'LOCAL_ONLY',
+      errorMessage: n8nError || undefined
     });
 
     let zeroNotice = null;

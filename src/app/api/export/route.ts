@@ -123,6 +123,14 @@ export async function POST(req: NextRequest) {
         exportItems,
         monthYear
       );
+      if (n8nRes && n8nRes.success === false) {
+        return NextResponse.json({
+          success: false,
+          error: `Xuất Google Sheets thất bại từ n8n: ${n8nRes.error || 'Quy trình n8n báo lỗi.'}`,
+          details: n8nRes
+        }, { status: 502 });
+      }
+
       return NextResponse.json({
         success: true,
         message: `Đã xuất ${exportItems.length} dòng sang tab ${monthYear || 'Google Sheets'} thành công.`,

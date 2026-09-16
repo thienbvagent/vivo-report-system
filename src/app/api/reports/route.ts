@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
-import { getReportItems, getAvailableDates, getDateCounts, clearCenterData } from '@/lib/db-storage';
+import { getReportItems, getAvailableDates, getDateCounts, getUploads, clearCenterData } from '@/lib/db-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,6 +16,9 @@ export async function GET(req: NextRequest) {
     const dateCounts = getDateCounts(session.centerCode);
     const totalAllRows = Object.values(dateCounts).reduce((a, b) => a + b, 0);
     const selectedDate = dateParam || (availableDates.length > 0 ? availableDates[0] : 'ALL');
+
+    const uploads = getUploads(session.centerCode);
+    const pendingSyncCount = uploads.filter(u => u.status === 'LOCAL_ONLY' || u.status === 'FAILED').length;
 
     const items = getReportItems(session.centerCode, selectedDate);
 
@@ -38,6 +41,7 @@ export async function GET(req: NextRequest) {
       dateCounts,
       totalAllRows,
       selectedDate,
+      pendingSyncCount,
       summary: {
         totalRows,
         totalUnitPrice,

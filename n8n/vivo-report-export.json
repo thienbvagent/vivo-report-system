@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = String(req.center_code || '').trim().toUpperCase();\nconst reportDate = String(req.report_date || '').trim();\nconst spreadsheetId = String(req.spreadsheet_id || '').trim();\nconst targetSheet = String(req.target_sheet || 'BaoCao').trim();\n\nif (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) throw new Error('Spreadsheet ID không hợp lệ.');\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(reportDate)) throw new Error('Ngày báo cáo không hợp lệ.');\nif (targetSheet !== 'BaoCao') throw new Error('Chỉ cho phép xuất vào tab BaoCao.');\nif (!Array.isArray(req.items) || req.items.length === 0) throw new Error('Không có dữ liệu để xuất.');\n\nconst numberOrBlank = value => {\n  if (value === '' || value === null || value === undefined) return '';\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.round(parsed) : '';\n};\n\nconst rows = req.items\n  .filter(row => String(row['TTBH'] || '').trim().toUpperCase() === centerCode && String(row['Ngày'] || '').trim() === reportDate)\n  .map(row => ({\n    json: {\n      'Ngày': reportDate,\n      'Số phiếu sửa chữa': String(row['Số phiếu sửa chữa'] || ''),\n      'Mã vật tư linh kiện': String(row['Mã vật tư linh kiện'] || ''),\n      'Tên vật tư': String(row['Tên vật tư'] || ''),\n      'Xuất Bảo Hành': row['Xuất Bảo Hành'] === 1 || row['Xuất Bảo Hành'] === '1' ? 1 : '',\n      'Xuất Sửa Chữa': row['Xuất Sửa Chữa'] === 1 || row['Xuất Sửa Chữa'] === '1' ? 1 : '',\n      'Đơn giá': numberOrBlank(row['Đơn giá']),\n      'Doanh thu tiền mặt': numberOrBlank(row['Doanh thu tiền mặt']),\n      'Doanh thu tiền mặt trước thuế': numberOrBlank(row['Doanh thu tiền mặt trước thuế']),\n      'Công nợ': numberOrBlank(row['Công nợ']),\n      'CN sau chiết khấu': numberOrBlank(row['CN sau chiết khấu']),\n      'CN trước thuế': numberOrBlank(row['CN trước thuế']),\n      'Khách hàng': String(row['Khách hàng'] || ''),\n      'Phương thức thanh toán': String(row['Phương thức thanh toán'] || ''),\n      'TTBH': centerCode\n    }\n  }));\n\nif (rows.length === 0) throw new Error('Không còn dòng hợp lệ sau khi kiểm tra TTBH và ngày báo cáo.');\nreturn rows;"
+        "jsCode": "const req = $('Webhook').first().json.body || $('Webhook').first().json;\nconst centerCode = String(req.center_code || '').trim().toUpperCase();\nconst reportDate = String(req.report_date || '').trim();\nconst spreadsheetId = String(req.spreadsheet_id || req.spreadsheetId || '').trim();\nconst targetSheet = String(req.targetSheet || req.target_sheet || 'BaoCao').trim();\n\nif (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) throw new Error('Spreadsheet ID không hợp lệ.');\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(reportDate)) throw new Error('Ngày báo cáo không hợp lệ.');\nif (!targetSheet) throw new Error('Thiếu tên tab Google Sheet.');\nif (!Array.isArray(req.items) || req.items.length === 0) throw new Error('Không có dữ liệu để xuất.');\n\nconst numberOrBlank = value => {\n  if (value === '' || value === null || value === undefined) return '';\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? Math.round(parsed) : '';\n};\n\nconst rows = req.items\n  .filter(row => String(row['TTBH'] || '').trim().toUpperCase() === centerCode && String(row['Ngày'] || '').trim() === reportDate)\n  .map(row => ({\n    json: {\n      'Ngày': reportDate,\n      'Số phiếu sửa chữa': String(row['Số phiếu sửa chữa'] || ''),\n      'Mã vật tư linh kiện': String(row['Mã vật tư linh kiện'] || ''),\n      'Tên vật tư': String(row['Tên vật tư'] || ''),\n      'Xuất Bảo Hành': row['Xuất Bảo Hành'] === 1 || row['Xuất Bảo Hành'] === '1' ? 1 : '',\n      'Xuất Sửa Chữa': row['Xuất Sửa Chữa'] === 1 || row['Xuất Sửa Chữa'] === '1' ? 1 : '',\n      'Đơn giá': numberOrBlank(row['Đơn giá']),\n      'Doanh thu tiền mặt': numberOrBlank(row['Doanh thu tiền mặt']),\n      'Doanh thu tiền mặt trước thuế': numberOrBlank(row['Doanh thu tiền mặt trước thuế']),\n      'Công nợ': numberOrBlank(row['Công nợ']),\n      'CN sau chiết khấu': numberOrBlank(row['CN sau chiết khấu']),\n      'CN trước thuế': numberOrBlank(row['CN trước thuế']),\n      'Khách hàng': String(row['Khách hàng'] || ''),\n      'Phương thức thanh toán': String(row['Phương thức thanh toán'] || ''),\n      'TTBH': centerCode\n    }\n  }));\n\nif (rows.length === 0) throw new Error('Không còn dòng hợp lệ sau khi kiểm tra TTBH và ngày báo cáo.');\nreturn rows;"
       },
       "id": "node-map-export-columns",
       "name": "Validate and Map 15 Columns",
@@ -51,7 +51,7 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "BaoCao",
+          "value": "={{ $('Webhook').first().json.body?.targetSheet || $('Webhook').first().json.body?.target_sheet || 'BaoCao' }}",
           "mode": "name"
         },
         "clear": "wholeSheet",
@@ -79,7 +79,7 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "BaoCao",
+          "value": "={{ $('Webhook').first().json.body?.targetSheet || $('Webhook').first().json.body?.target_sheet || 'BaoCao' }}",
           "mode": "name"
         },
         "columns": {
