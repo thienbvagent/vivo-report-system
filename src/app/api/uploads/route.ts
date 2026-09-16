@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { calculateFileHash } from '@/lib/file-hash';
-import { findUploadByHash, saveUploadRecord, saveReportItems } from '@/lib/db-storage';
+import { findUploadByHash, saveUploadRecord, saveReportItems, getUploads } from '@/lib/db-storage';
 import { forwardImportToN8n } from '@/lib/n8n-client';
 import { transformExcelRows, RawExcelRow } from '@/lib/business-rules';
 import { readExcelBuffer, fixZip64Buffer } from '@/lib/excel-parser';
@@ -166,9 +166,27 @@ export async function POST(req: NextRequest) {
       latestReportDate: transformResult.latestReportDate,
       uploadId,
       n8nStatus,
-      n8nError
+      n8nError,
+      warnings: transformResult.warnings
     });
 
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getCurrentSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Chưa đăng nhập hoặc phiên làm việc đã hết hạn.' }, { status: 401 });
+    }
+
+    const uploads = getUploads(session.centerCode);
+    return NextResponse.json({
+      success: true,
+      uploads
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

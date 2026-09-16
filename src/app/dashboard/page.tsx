@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import SummaryCards, { SummaryData } from '@/components/SummaryCards';
 import DataTable from '@/components/DataTable';
-import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Calendar, Download, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, Link2, ExternalLink, Trash2, FileSpreadsheet } from 'lucide-react';
 import { ProcessedReportItem } from '@/lib/business-rules';
 
 export default function DashboardPage() {
@@ -254,6 +255,38 @@ export default function DashboardPage() {
       <Navbar user={user} />
 
       <main className="flex-1 w-full max-w-[99%] xl:max-w-[98%] 2xl:max-w-[97%] mx-auto px-2 sm:px-4 py-5">
+        {pendingSyncCount > 0 && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <div>
+                <div className="text-sm font-bold text-amber-900">
+                  Có {pendingSyncCount} đợt tải file chưa được đồng bộ sang Google Sheets (n8n).
+                </div>
+                <div className="text-xs text-amber-700 mt-0.5">
+                  Dữ liệu đã được lưu an toàn trong SQLite nhưng Google Sheets có thể chưa nhận được bản ghi mới nhất.
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/uploads"
+                className="px-3.5 py-1.5 bg-white text-amber-900 border border-amber-300 rounded-xl text-xs font-semibold hover:bg-amber-100 transition shadow-sm"
+              >
+                Lịch Sử Upload
+              </Link>
+              <button
+                onClick={handleRetryAllSync}
+                disabled={retryingSync}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${retryingSync ? 'animate-spin' : ''}`} />
+                <span>{retryingSync ? 'Đang đồng bộ...' : 'Đồng Bộ Lại Ngay'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header toolbar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
