@@ -12,6 +12,8 @@ import * as XLSX from 'xlsx';
  * lay kich thuoc thuc te (thuong chi vai KB / MB) va ghi de vao cac truong 32-bit,
  * cho phep SheetJS doc file muot ma trong vai mili-giay.
  */
+export const MAX_UNCOMPRESSED_SIZE = 150 * 1024 * 1024; // 150 MB
+
 export function fixZip64Buffer(inputBuf: Buffer): Buffer {
   const buf = Buffer.from(inputBuf);
   // Tim End of Central Directory Record (EOCD - signature: 0x06054b50)
@@ -53,6 +55,12 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
       }
 
       if (actualUncomp !== null && actualComp !== null) {
+        if (actualUncomp > MAX_UNCOMPRESSED_SIZE) {
+          throw new Error(
+            `Kích thước tập tin giải nén vượt quá giới hạn an toàn (${Math.round(actualUncomp / (1024 * 1024))}MB > 150MB). Từ chối xử lý để ngăn ngừa nguy cơ cạn kiệt bộ nhớ (Zip Bomb).`
+          );
+        }
+
         // Cap nhat Central Directory
         buf.writeUInt32LE(actualComp, offset + 20);
         buf.writeUInt32LE(actualUncomp, offset + 24);

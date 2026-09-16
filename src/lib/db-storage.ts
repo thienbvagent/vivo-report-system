@@ -257,6 +257,12 @@ export function findUserByCode(code: string): StoredUser | null {
   };
 }
 
+export function updateUserPassword(centerCode: string, newPasswordHash: string): boolean {
+  const db = initDatabase();
+  const res = db.prepare('UPDATE users SET password_hash = ? WHERE center_code = ?').run(newPasswordHash, centerCode);
+  return ((res as any)?.changes || 0) > 0;
+}
+
 export function getUploads(centerCode?: string): UploadRecord[] {
   const db = initDatabase();
   let rows: any[];

@@ -370,8 +370,22 @@ test('Test 23: TGDĐ bảo hành (Công nợ = 0) -> CN sau chiết khấu = 0, 
   assert.strictEqual(res.items[0]['CN trước thuế'], 0);
 });
 
-test('TEST THỰC TẾ TRÊN FILE EXCEL MẪU D:\\VN0000182_...xlsx', () => {
+test('TEST THỰC TẾ TRÊN FILE EXCEL MẪU D:\\VN0000182_...xlsx (Hoặc Fixture CI)', () => {
   const filePath = path.resolve('D:\\VN0000182_Bảng báo cáo truy vấn chi tiết phiếu công tác sửa chữa_2026-09-13 11_51_10 (1).xlsx');
+  const fixturePath = path.resolve('tests/fixtures/sample_report.xlsx');
+
+  if (!fs.existsSync(filePath)) {
+    const workbook = XLSX.readFile(fixturePath);
+    const sheet = workbook.Sheets['Sheet1'];
+    const rows: RawExcelRow[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const res = transformExcelRows(rows, 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.inputRows, 4);
+    assert.strictEqual(res.validRows, 3);
+    console.log('-> CI Portable Fixture: Hoàn thành kiểm thử độc lập thành công!');
+    return;
+  }
+
   const workbook = XLSX.readFile(filePath);
   const sheet = workbook.Sheets['Sheet1'];
   const rows: RawExcelRow[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
@@ -481,8 +495,8 @@ test('TEST THỰC TẾ TRÊN FILE EXCEL MẪU D:\\VN0000182_...xlsx', () => {
   console.log('-> Toàn bộ Test Case khớp chính xác 100%!');
 });
 
-test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Failed to allocate memory', () => {
-  const { readExcelBuffer } = require('../src/lib/excel-parser');
+test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Failed to allocate memory và phòng chống Zip Bomb', () => {
+  const { readExcelBuffer, fixZip64Buffer, MAX_UNCOMPRESSED_SIZE } = require('../src/lib/excel-parser');
   const filePath = path.resolve('VN0000182_Bảng báo cáo truy vấn chi tiết phiếu công tác sửa chữa_2026-09-15 16_50_52.xlsx');
   if (fs.existsSync(filePath)) {
     const rawBuf = fs.readFileSync(filePath);
@@ -498,4 +512,26 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
     assert.strictEqual(res.warningRows, 6);
     console.log(`-> File ZIP64 2026-09-15: Đọc thành công ${res.inputRows} dòng, ${res.validRows} dòng hợp lệ!`);
   }
+
+  // Kiểm tra cơ chế phòng chống Zip Bomb (tập tin giải nén vượt quá MAX_UNCOMPRESSED_SIZE)
+  assert.strictEqual(MAX_UNCOMPRESSED_SIZE, 150 * 1024 * 1024);
+  const fakeBomb = Buffer.alloc(120);
+  fakeBomb.writeUInt32LE(0x06054b50, 120 - 22); // EOCD signature
+  fakeBomb.writeUInt16LE(1, 120 - 12); // 1 entry
+  fakeBomb.writeUInt32LE(0, 120 - 6);  // cdOffset = 0
+  fakeBomb.writeUInt32LE(0x02014b50, 0); // CD signature
+  fakeBomb.writeUInt32LE(0xFFFFFFFF, 20); // compressed = 0xFFFFFFFF
+  fakeBomb.writeUInt32LE(0xFFFFFFFF, 24); // uncompressed = 0xFFFFFFFF
+  fakeBomb.writeUInt16LE(0, 28); // fnLen = 0
+  fakeBomb.writeUInt16LE(20, 30); // extraLen = 20
+  fakeBomb.writeUInt16LE(0, 32); // commentLen = 0
+  // Extra field tag 0x0001, size 16
+  fakeBomb.writeUInt16LE(0x0001, 46);
+  fakeBomb.writeUInt16LE(16, 48);
+  fakeBomb.writeBigUInt64LE(BigInt(200 * 1024 * 1024), 50); // 200MB uncompressed > 150MB limit
+  fakeBomb.writeBigUInt64LE(BigInt(1000), 58);
+
+  assert.throws(() => {
+    fixZip64Buffer(fakeBomb);
+  }, /Kích thước tập tin giải nén vượt quá giới hạn an toàn/);
 });

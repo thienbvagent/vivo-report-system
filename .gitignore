@@ -21,6 +21,11 @@
 *.log
 npm-debug.log*
 
+# Excel data files (PII protection)
+*.xlsx
+*.xls
+!tests/fixtures/*.xlsx
+
 # TypeScript cache
 *.tsbuildinfo
 

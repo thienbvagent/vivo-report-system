@@ -1,4 +1,4 @@
-name: Deploy Vivo Report
+name: CI & Deploy Vivo Report
 
 on:
   push:
@@ -10,8 +10,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-and-build:
+    name: Run Tests and Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests
+        env:
+          INITIAL_CENTER_PASSWORD: "CiTestPassword@2026"
+          SESSION_SECRET: "ci_jwt_session_secret_key_at_least_32_chars_long_123"
+        run: npm test
+
+      - name: Verify Production Build
+        env:
+          INITIAL_CENTER_PASSWORD: "CiTestPassword@2026"
+          SESSION_SECRET: "ci_jwt_session_secret_key_at_least_32_chars_long_123"
+        run: npm run build
+
   deploy:
     name: Deploy vivo.pdarc.space
+    needs: test-and-build
     runs-on: ubuntu-latest
 
     steps:
@@ -73,6 +102,17 @@ jobs:
             echo "Starting Vivo Report..."
 
             docker compose up -d --remove-orphans
+
+            echo "Performing health check..."
+            sleep 3
+            for i in $(seq 1 10); do
+              if curl -s http://127.0.0.1:3000/login | grep -q "vivo" 2>/dev/null; then
+                echo "Health check passed!"
+                break
+              fi
+              echo "Waiting for app to be ready ($i/10)..."
+              sleep 2
+            done
 
             echo "Container status:"
             docker compose ps
