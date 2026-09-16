@@ -29,6 +29,13 @@ export interface ProcessedReportItem {
   'Source Row Number'?: number;
 }
 
+export interface SolutionStat {
+  solution: string;
+  ticketCount: number;
+  rowCount: number;
+  validRowCount: number;
+}
+
 export interface TransformResult {
   success: boolean;
   error?: string;
@@ -51,6 +58,7 @@ export interface TransformResult {
   latestReportDate: string;
   items: ProcessedReportItem[];
   warnings: string[];
+  solutionStats?: SolutionStat[];
 }
 
 export function normalizeText(value: any): string {
@@ -280,8 +288,24 @@ export function transformExcelRows(
   let filteredBySolution = 0;
   let warningRows = 0;
 
+  // Thống kê tổng hợp số lượng phiếu theo Phương án giải quyết
+  const ticketsBySolution = new Map<string, Set<string>>();
+  const rowsBySolution = new Map<string, number>();
+  const validRowsBySolution = new Map<string, number>();
+
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx];
+    const rawSolution = colPhuongAn ? normalizeText(row[colPhuongAn]) : '';
+    const solKey = rawSolution || 'Chưa phân loại';
+    const ticket = colPhieu ? normalizeText(row[colPhieu]) : `row_${idx}`;
+
+    rowsBySolution.set(solKey, (rowsBySolution.get(solKey) || 0) + 1);
+    if (!ticketsBySolution.has(solKey)) {
+      ticketsBySolution.set(solKey, new Set<string>());
+    }
+    if (ticket) {
+      ticketsBySolution.get(solKey)!.add(ticket);
+    }
     const sourceRowNumber = idx + 2;
 
     // 1. Parse và validate Thời gian lấy máy
@@ -414,6 +438,7 @@ export function transformExcelRows(
       'Phương án giải quyết': solution,
       'Source Row Number': sourceRowNumber
     });
+    validRowsBySolution.set(solKey, (validRowsBySolution.get(solKey) || 0) + 1);
   }
 
   // 6. Hậu kiểm và ghi đè kết quả hoàn chỉnh (Final Pass Safeguard):
@@ -469,6 +494,15 @@ export function transformExcelRows(
   const availableReportDates = Array.from(dateSet).sort();
   const latestReportDate = availableReportDates.length > 0 ? availableReportDates[availableReportDates.length - 1] : '';
 
+  const solutionStats: SolutionStat[] = Array.from(ticketsBySolution.entries())
+    .map(([solution, ticketSet]) => ({
+      solution,
+      ticketCount: ticketSet.size,
+      rowCount: rowsBySolution.get(solution) || 0,
+      validRowCount: validRowsBySolution.get(solution) || 0
+    }))
+    .sort((a, b) => b.ticketCount - a.ticketCount);
+
   return {
     success: true,
     center: {
@@ -489,6 +523,7 @@ export function transformExcelRows(
     availableReportDates,
     latestReportDate,
     items,
-    warnings
+    warnings,
+    solutionStats
   };
 }

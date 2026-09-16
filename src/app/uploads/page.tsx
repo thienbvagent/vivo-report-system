@@ -17,7 +17,8 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  FileText
+  FileText,
+  ListChecks
 } from 'lucide-react';
 
 interface UploadRecordItem {
@@ -355,6 +356,73 @@ export default function UploadsPage() {
                       <div className="text-lg font-bold text-blue-700">{result.klRows}</div>
                     </div>
                   </div>
+
+                  {/* BẢNG TỔNG HỢP THEO PHƯƠNG ÁN GIẢI QUYẾT */}
+                  {result.solutionStats && result.solutionStats.length > 0 && (
+                    <div className="mb-5 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3 border-b border-slate-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <ListChecks className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                            Tổng Hợp Số Lượng Phiếu Theo Phương Án Giải Quyết
+                          </h4>
+                        </div>
+                        <span className="text-xs text-slate-500 font-medium">
+                          Tổng số phiếu trong file: <strong className="text-slate-800 font-bold">{result.solutionStats.reduce((sum: number, s: any) => sum + s.ticketCount, 0)}</strong> phiếu
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                            <tr>
+                              <th className="py-2.5 px-3">Phương Án Giải Quyết</th>
+                              <th className="py-2.5 px-3 w-28 text-center font-bold text-blue-700">Số Phiếu</th>
+                              <th className="py-2.5 px-3 w-24 text-center text-slate-500">Số Dòng File</th>
+                              <th className="py-2.5 px-3 w-44 text-center">Ghi Chú Nghiệp Vụ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {result.solutionStats.map((stat: any, sIdx: number) => {
+                              const isReplacement = stat.solution.toLowerCase().includes('thay thế') || stat.solution.toLowerCase().includes('thay thế');
+                              const isCancel = stat.solution.toLowerCase().includes('huỷ') || stat.solution.toLowerCase().includes('hủy');
+                              const isSoftware = stat.solution.toLowerCase().includes('phần mềm') || stat.solution.toLowerCase().includes('khôi phục');
+
+                              return (
+                                <tr key={sIdx} className="hover:bg-slate-50 transition-colors">
+                                  <td className="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                      isReplacement ? 'bg-emerald-500' : isCancel ? 'bg-rose-500' : isSoftware ? 'bg-blue-500' : 'bg-slate-400'
+                                    }`} />
+                                    <span>{stat.solution}</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center">
+                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200">
+                                      {stat.ticketCount} phiếu
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center text-slate-600 font-medium">
+                                    {stat.rowCount} dòng
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center">
+                                    {stat.validRowCount > 0 ? (
+                                      <span className="inline-block text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        Nạp {stat.validRowCount} dòng LK vào báo cáo
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400 italic">
+                                        Không phát sinh LK
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
                     <div className="text-xs text-slate-600">

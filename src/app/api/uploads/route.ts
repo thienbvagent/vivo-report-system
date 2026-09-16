@@ -169,7 +169,8 @@ export async function POST(req: NextRequest) {
       uploadId,
       n8nStatus,
       n8nError,
-      warnings: transformResult.warnings
+      warnings: transformResult.warnings,
+      solutionStats: transformResult.solutionStats || []
     });
 
   } catch (err: any) {
