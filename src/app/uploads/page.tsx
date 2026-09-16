@@ -18,7 +18,9 @@ import {
   ChevronUp,
   Clock,
   FileText,
-  ListChecks
+  ListChecks,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 
 interface UploadRecordItem {
@@ -58,6 +60,8 @@ export default function UploadsPage() {
     message: string;
   } | null>(null);
   const [portalStats, setPortalStats] = useState<{ totalCount: number; matchedCount: number } | null>(null);
+  const [portalResetting, setPortalResetting] = useState(false);
+  const [portalSuccessMsg, setPortalSuccessMsg] = useState<string | null>(null);
 
   // Warnings inspection state
   const [showWarningsTable, setShowWarningsTable] = useState(true);
@@ -120,6 +124,43 @@ export default function UploadsPage() {
       setPortalFile(e.target.files[0]);
       setPortalError(null);
       setPortalResult(null);
+      setPortalSuccessMsg(null);
+    }
+  };
+
+  const handleResetPortal = async () => {
+    if (!portalStats || portalStats.totalCount === 0) return;
+
+    const confirmReset = window.confirm(
+      `Bạn có chắc chắn muốn xóa toàn bộ ${portalStats.totalCount} mã Jobcard đã nạp?\n\n` +
+      `Thao tác này sẽ xóa sạch dữ liệu Jobcard Portal và làm sạch cột Jobcard trong các phiếu sửa chữa đã khớp (${portalStats.matchedCount} phiếu), để bạn có thể nạp lại file mới.`
+    );
+    if (!confirmReset) return;
+
+    setPortalResetting(true);
+    setPortalError(null);
+    setPortalSuccessMsg(null);
+
+    try {
+      const res = await fetch('/api/uploads/portal', {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPortalError(data.error || 'Xóa dữ liệu Portal Jobcard thất bại.');
+      } else {
+        setPortalResult(null);
+        setPortalFile(null);
+        const fileInput = document.getElementById('portal-file-input') as HTMLInputElement | null;
+        if (fileInput) fileInput.value = '';
+
+        setPortalSuccessMsg(data.message || 'Đã làm sạch dữ liệu Jobcard thành công! Bạn có thể nạp lại file mới.');
+        setPortalStats(data.stats || { totalCount: 0, matchedCount: 0 });
+      }
+    } catch (err: any) {
+      setPortalError('Lỗi kết nối khi reset: ' + err.message);
+    } finally {
+      setPortalResetting(false);
     }
   };
 
@@ -130,6 +171,7 @@ export default function UploadsPage() {
     setPortalUploading(true);
     setPortalError(null);
     setPortalResult(null);
+    setPortalSuccessMsg(null);
 
     const formData = new FormData();
     formData.append('file', portalFile);
@@ -168,8 +210,12 @@ export default function UploadsPage() {
   };
 
   const getStoredSheetUrl = () => {
-    if (typeof window === 'undefined') return '';
-    return (localStorage.getItem('vivo_google_sheet_url') || '').trim();
+    if (typeof window === 'undefined' || !user?.centerCode) return '';
+    try {
+      localStorage.removeItem('vivo_google_sheet_url');
+    } catch {}
+    const key = `vivo_google_sheet_url_${user.centerCode}`;
+    return (localStorage.getItem(key) || (user as any).googleSheetUrl || '').trim();
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -712,7 +758,7 @@ export default function UploadsPage() {
                     </p>
                   </div>
                   {portalStats && (
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-xs flex-shrink-0 text-indigo-900 space-y-1 shadow-sm">
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-xs flex-shrink-0 text-indigo-900 space-y-1.5 shadow-sm min-w-[210px]">
                       <div className="flex items-center justify-between gap-4">
                         <span>Jobcard đã lưu:</span>
                         <strong className="text-sm font-mono text-indigo-700">{portalStats.totalCount}</strong>
@@ -721,12 +767,36 @@ export default function UploadsPage() {
                         <span>Phiếu sửa chữa đã khớp:</span>
                         <strong className="text-sm font-mono text-emerald-700">{portalStats.matchedCount}</strong>
                       </div>
+                      {portalStats.totalCount > 0 && (
+                        <div className="pt-2 border-t border-indigo-200/60">
+                          <button
+                            type="button"
+                            onClick={handleResetPortal}
+                            disabled={portalResetting}
+                            className="w-full py-1.5 px-2 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                            title="Xóa toàn bộ mã Jobcard đã lưu để làm sạch hoặc nạp lại file mới"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>{portalResetting ? 'Đang xóa...' : 'Reset Dữ Liệu Portal'}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
               <form onSubmit={handlePortalUpload} className="p-6 space-y-6">
+                {portalSuccessMsg && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-sm flex items-start space-x-3">
+                    <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-emerald-600" />
+                    <div>
+                      <div className="font-bold">Thao tác thành công</div>
+                      <div>{portalSuccessMsg}</div>
+                    </div>
+                  </div>
+                )}
+
                 {portalError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm flex items-start space-x-3">
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -757,23 +827,38 @@ export default function UploadsPage() {
                   </label>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={!portalFile || portalUploading}
-                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50"
-                >
-                  {portalUploading ? (
-                    <span className="flex items-center gap-2">
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Đang phân tích và khớp mã Jobcard...
-                    </span>
-                  ) : (
-                    <>
-                      <FileSpreadsheet className="w-5 h-5" />
-                      <span>Tải Lên & Khớp Mã Jobcard</span>
-                    </>
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={!portalFile || portalUploading}
+                    className="flex-1 w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    {portalUploading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Đang phân tích và khớp mã Jobcard...
+                      </span>
+                    ) : (
+                      <>
+                        <FileSpreadsheet className="w-5 h-5" />
+                        <span>Tải Lên & Khớp Mã Jobcard</span>
+                      </>
+                    )}
+                  </button>
+
+                  {portalStats && portalStats.totalCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetPortal}
+                      disabled={portalResetting || portalUploading}
+                      className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-300 font-bold rounded-xl shadow-sm transition flex items-center justify-center space-x-2 shrink-0 disabled:opacity-50"
+                      title="Xóa toàn bộ mã Jobcard đã lưu để làm sạch hoặc nạp lại file mới"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>{portalResetting ? 'Đang xóa...' : 'Reset Dữ Liệu'}</span>
+                    </button>
                   )}
-                </button>
+                </div>
               </form>
             </div>
 

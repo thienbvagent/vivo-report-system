@@ -9,7 +9,10 @@ import {
   getJobcardMap,
   saveReportItems,
   getReportItems,
-  getPortalJobcardsStats
+  getPortalJobcardsStats,
+  clearPortalJobcards,
+  updateUserSheetUrl,
+  getUserSheetUrl
 } from '../src/lib/db-storage';
 
 test('Portal Jobcard Parser: parses valid workbook and trims bill codes', () => {
@@ -187,5 +190,117 @@ test('Case-insensitive bill matching: 01283NT2609036581 and 01283nt2609036581 ma
   const res = transformExcelRows([row], 'R4001003', 'Trung tâm CSKH vivo Cần Thơ', jobcardMap);
   assert.strictEqual(res.items.length, 1);
   assert.strictEqual(res.items[0]['Jobcard'], expectedJobcard);
+});
+
+test('clearPortalJobcards: resets all portal jobcards and clears mapped jobcard in reports', () => {
+  initDatabase();
+
+  const resetBill = `RESET_BILL_${Date.now()}`;
+  const resetJobcard = `RESET_JC_${Date.now()}`;
+
+  // 1. Save a report item
+  saveReportItems([
+    {
+      'Ngày báo cáo': '2026-09-16',
+      'Số phiếu sửa chữa': `TICKET_RESET_${Date.now()}`,
+      'Mã vật tư linh kiện': 'LK_RESET_01',
+      'Tên vật tư': 'Camera Reset Test',
+      'Xuất Bảo Hành': '',
+      'Xuất phụ kiện': '',
+      'Xuất Sửa Chữa': 1,
+      'Đơn giá': 450000,
+      'Doanh thu tiền mặt': null,
+      'Doanh thu tiền mặt trước thuế': null,
+      'Công nợ': 450000,
+      'CN sau chiết khấu': 432000,
+      'CN trước thuế': 400000,
+      'Khách hàng': 'TGDĐ',
+      'Phương thức thanh toán': 'CN',
+      'Jobcard': '',
+      'Số vận đơn nhanh (nhận)': resetBill,
+      'Thời gian lấy máy': '2026-09-16 11:30:00',
+      'Mã TTBH': 'R4001003',
+      'Tên TTBH': 'Trung tâm CSKH vivo Cần Thơ',
+      'Loại hình đem đến sửa': 'Kênh chuỗi gửi sửa',
+      'Loại hình sửa chữa': 'Sửa chữa',
+      'Phương án giải quyết': 'Thay thế linh kiện và phụ kiện'
+    }
+  ]);
+
+  // 2. Save portal jobcard matching this bill
+  savePortalJobcards([
+    {
+      billCode: resetBill,
+      jobcardCode: resetJobcard
+    }
+  ]);
+
+  // Verify it was matched
+  let stats = getPortalJobcardsStats();
+  assert.ok(stats.totalCount >= 1);
+  assert.ok(stats.matchedCount >= 1);
+
+  // 3. Perform clearPortalJobcards
+  const clearResult = clearPortalJobcards();
+  assert.ok(clearResult.deletedCount >= 1);
+  assert.ok(clearResult.clearedReportsCount >= 1);
+
+  // 4. Verify stats are now 0
+  stats = getPortalJobcardsStats();
+  assert.strictEqual(stats.totalCount, 0);
+  assert.strictEqual(stats.matchedCount, 0);
+
+  // 5. Verify map is empty
+  const map = getJobcardMap();
+  assert.strictEqual(map.has(resetBill), false);
+});
+
+test('Multi-center isolation: Portal jobcards and Google Sheet URLs are strictly isolated between centers', () => {
+  initDatabase();
+
+  const centerA = 'R4001003';
+  const centerB = 'R4001008';
+
+  // 1. Center A sets their Google Sheet URL
+  const sheetUrlA = 'https://docs.google.com/spreadsheets/d/center-A-sheet/edit';
+  updateUserSheetUrl(centerA, sheetUrlA);
+  assert.strictEqual(getUserSheetUrl(centerA), sheetUrlA);
+
+  // Center B should NOT see Center A's sheet URL
+  assert.notStrictEqual(getUserSheetUrl(centerB), sheetUrlA);
+
+  // 2. Center A saves portal jobcards
+  const billA = `BILL_A_${Date.now()}`;
+  savePortalJobcards([{ billCode: billA, jobcardCode: 'JC_A_001' }], centerA);
+
+  // Center A should see 1 jobcard, Center B should see 0
+  const statsA = getPortalJobcardsStats(centerA);
+  const statsB = getPortalJobcardsStats(centerB);
+  assert.strictEqual(statsA.totalCount, 1);
+  assert.strictEqual(statsB.totalCount, 0);
+
+  // 3. Center B sets their own Google Sheet URL and portal jobcard
+  const sheetUrlB = 'https://docs.google.com/spreadsheets/d/center-B-sheet/edit';
+  updateUserSheetUrl(centerB, sheetUrlB);
+  assert.strictEqual(getUserSheetUrl(centerB), sheetUrlB);
+  assert.strictEqual(getUserSheetUrl(centerA), sheetUrlA);
+
+  const billB = `BILL_B_${Date.now()}`;
+  savePortalJobcards([{ billCode: billB, jobcardCode: 'JC_B_001' }], centerB);
+
+  // Both have 1, isolated
+  assert.strictEqual(getPortalJobcardsStats(centerA).totalCount, 1);
+  assert.strictEqual(getPortalJobcardsStats(centerB).totalCount, 1);
+
+  // Map is isolated
+  assert.strictEqual(getJobcardMap(centerA).has(billA), true);
+  assert.strictEqual(getJobcardMap(centerA).has(billB), false);
+  assert.strictEqual(getJobcardMap(centerB).has(billB), true);
+  assert.strictEqual(getJobcardMap(centerB).has(billA), false);
+
+  // 4. Center A clears their portal data
+  clearPortalJobcards(centerA);
+  assert.strictEqual(getPortalJobcardsStats(centerA).totalCount, 0);
+  assert.strictEqual(getPortalJobcardsStats(centerB).totalCount, 1); // Center B untouched!
 });
 

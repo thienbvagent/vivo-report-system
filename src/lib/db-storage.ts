@@ -13,6 +13,7 @@ export interface StoredUser {
   centerCode: string;
   centerName: string;
   passwordHash: string;
+  googleSheetUrl?: string;
   createdAt: string;
 }
 
@@ -155,18 +156,33 @@ export function initDatabase(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS idx_portal_jobcards_bill ON portal_jobcards (bill_code);
   `);
 
-  // Ensure reports columns exist in pre-existing databases
-  try {
-    const reportCols: any[] = db.prepare('PRAGMA table_info(reports);').all();
-    const colNames = new Set(reportCols.map(c => c.name));
-    if (!colNames.has('inbound_waybill')) {
-      db.exec('ALTER TABLE reports ADD COLUMN inbound_waybill TEXT;');
-    }
-    if (!colNames.has('jobcard')) {
-      db.exec('ALTER TABLE reports ADD COLUMN jobcard TEXT;');
-    }
-    db.exec('CREATE INDEX IF NOT EXISTS idx_reports_waybill ON reports (inbound_waybill);');
-  } catch {}
+    // Ensure reports columns exist in pre-existing databases
+    try {
+      const reportCols: any[] = db.prepare('PRAGMA table_info(reports);').all();
+      const colNames = new Set(reportCols.map(c => c.name));
+      if (!colNames.has('inbound_waybill')) {
+        db.exec('ALTER TABLE reports ADD COLUMN inbound_waybill TEXT;');
+      }
+      if (!colNames.has('jobcard')) {
+        db.exec('ALTER TABLE reports ADD COLUMN jobcard TEXT;');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS idx_reports_waybill ON reports (inbound_waybill);');
+
+      // Ensure users has google_sheet_url
+      const userCols: any[] = db.prepare('PRAGMA table_info(users);').all();
+      const userColNames = new Set(userCols.map(c => c.name));
+      if (!userColNames.has('google_sheet_url')) {
+        db.exec('ALTER TABLE users ADD COLUMN google_sheet_url TEXT;');
+      }
+
+      // Ensure portal_jobcards has center_code
+      const portalCols: any[] = db.prepare('PRAGMA table_info(portal_jobcards);').all();
+      const portalColNames = new Set(portalCols.map(c => c.name));
+      if (!portalColNames.has('center_code')) {
+        db.exec("ALTER TABLE portal_jobcards ADD COLUMN center_code TEXT DEFAULT 'R4001003';");
+        db.exec('CREATE INDEX IF NOT EXISTS idx_portal_jobcards_center ON portal_jobcards (center_code);');
+      }
+    } catch {}
 
   // Auto-migration from legacy JSON files if tables are empty
   migrateLegacyJsonIfEmpty(db, dataDir);
@@ -293,6 +309,7 @@ export function findUserByCode(code: string): StoredUser | null {
     centerCode: row.center_code,
     centerName: row.center_name,
     passwordHash: row.password_hash,
+    googleSheetUrl: row.google_sheet_url || '',
     createdAt: row.created_at
   };
 }
@@ -301,6 +318,22 @@ export function updateUserPassword(centerCode: string, newPasswordHash: string):
   const db = initDatabase();
   const res = db.prepare('UPDATE users SET password_hash = ? WHERE center_code = ?').run(newPasswordHash, centerCode);
   return ((res as any)?.changes || 0) > 0;
+}
+
+export function updateUserSheetUrl(centerCode: string, sheetUrl: string): boolean {
+  const db = initDatabase();
+  const res = db.prepare('UPDATE users SET google_sheet_url = ? WHERE center_code = ?').run(sheetUrl, centerCode);
+  return ((res as any)?.changes || 0) > 0;
+}
+
+export function getUserSheetUrl(centerCode: string): string {
+  const db = initDatabase();
+  try {
+    const row: any = db.prepare('SELECT google_sheet_url FROM users WHERE center_code = ?').get(centerCode);
+    return row?.google_sheet_url || '';
+  } catch {
+    return '';
+  }
 }
 
 export function getUploads(centerCode?: string): UploadRecord[] {
@@ -568,10 +601,12 @@ function saveReportItemsInternal(
   return { inserted, updated };
 }
 
-function getJobcardMapInternal(db: DatabaseSync): Map<string, string> {
+function getJobcardMapInternal(db: DatabaseSync, centerCode?: string): Map<string, string> {
   const map = new Map<string, string>();
   try {
-    const rows: any[] = db.prepare('SELECT bill_code, jobcard_code FROM portal_jobcards').all();
+    const rows: any[] = centerCode
+      ? db.prepare('SELECT bill_code, jobcard_code FROM portal_jobcards WHERE center_code = ?').all(centerCode)
+      : db.prepare('SELECT bill_code, jobcard_code FROM portal_jobcards').all();
     for (const r of rows) {
       if (r.bill_code && r.jobcard_code) {
         map.set(String(r.bill_code).trim().replace(/\s+/g, '').toUpperCase(), String(r.jobcard_code).trim());
@@ -581,12 +616,12 @@ function getJobcardMapInternal(db: DatabaseSync): Map<string, string> {
   return map;
 }
 
-export function getJobcardMap(): Map<string, string> {
+export function getJobcardMap(centerCode?: string): Map<string, string> {
   const db = initDatabase();
-  return getJobcardMapInternal(db);
+  return getJobcardMapInternal(db, centerCode);
 }
 
-export function savePortalJobcards(records: PortalJobcardRecord[]): {
+export function savePortalJobcards(records: PortalJobcardRecord[], centerCode: string = 'R4001003'): {
   totalSaved: number;
   updatedReportsCount: number;
   matchedTickets: string[];
@@ -597,9 +632,10 @@ export function savePortalJobcards(records: PortalJobcardRecord[]): {
   db.exec('BEGIN IMMEDIATE;');
   try {
     const insertStmt = db.prepare(`
-      INSERT INTO portal_jobcards (bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO portal_jobcards (center_code, bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(bill_code) DO UPDATE SET
+        center_code = excluded.center_code,
         jobcard_code = excluded.jobcard_code,
         imei = COALESCE(excluded.imei, portal_jobcards.imei),
         customer_name = COALESCE(excluded.customer_name, portal_jobcards.customer_name),
@@ -614,6 +650,7 @@ export function savePortalJobcards(records: PortalJobcardRecord[]): {
       if (!cleanBill || !cleanJobcard) continue;
 
       insertStmt.run(
+        centerCode,
         cleanBill,
         cleanJobcard,
         r.imei || null,
@@ -625,27 +662,30 @@ export function savePortalJobcards(records: PortalJobcardRecord[]): {
       totalSaved++;
     }
 
-    // Retroactive update on reports table (case-insensitive matching)
+    // Retroactive update only on reports of THIS centerCode (case-insensitive matching)
     const updateReportsStmt = db.prepare(`
       UPDATE reports
       SET jobcard = (
         SELECT jobcard_code FROM portal_jobcards
-        WHERE portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
+        WHERE portal_jobcards.center_code = ?
+          AND portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
       )
-      WHERE inbound_waybill IS NOT NULL 
+      WHERE reports.center_code = ?
+        AND inbound_waybill IS NOT NULL 
         AND TRIM(inbound_waybill) != ''
         AND EXISTS (
           SELECT 1 FROM portal_jobcards
-          WHERE portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
+          WHERE portal_jobcards.center_code = ?
+            AND portal_jobcards.bill_code = UPPER(REPLACE(REPLACE(REPLACE(reports.inbound_waybill, ' ', ''), char(9), ''), char(13), ''))
         )
     `);
-    const updateRes = updateReportsStmt.run();
+    const updateRes = updateReportsStmt.run(centerCode, centerCode, centerCode);
     const updatedReportsCount = (updateRes as any)?.changes || 0;
 
     const matchedRows: any[] = db.prepare(`
       SELECT DISTINCT ticket_id FROM reports
-      WHERE jobcard IS NOT NULL AND jobcard != ''
-    `).all();
+      WHERE center_code = ? AND jobcard IS NOT NULL AND jobcard != ''
+    `).all(centerCode);
     const matchedTickets = matchedRows.map(r => r.ticket_id);
 
     db.exec('COMMIT;');
@@ -660,20 +700,73 @@ export function savePortalJobcards(records: PortalJobcardRecord[]): {
   }
 }
 
-export function getPortalJobcardsStats(): { totalCount: number; matchedCount: number } {
+export function getPortalJobcardsStats(centerCode?: string): { totalCount: number; matchedCount: number } {
   const db = initDatabase();
   try {
-    const totalRow: any = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards').get();
-    const matchedRow: any = db.prepare(`
-      SELECT COUNT(DISTINCT ticket_id) as cnt FROM reports 
-      WHERE jobcard IS NOT NULL AND jobcard != ''
-    `).get();
+    let totalRow: any;
+    let matchedRow: any;
+
+    if (centerCode) {
+      totalRow = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards WHERE center_code = ?').get(centerCode);
+      matchedRow = db.prepare(`
+        SELECT COUNT(DISTINCT ticket_id) as cnt FROM reports 
+        WHERE center_code = ? AND jobcard IS NOT NULL AND jobcard != ''
+      `).get(centerCode);
+    } else {
+      totalRow = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards').get();
+      matchedRow = db.prepare(`
+        SELECT COUNT(DISTINCT ticket_id) as cnt FROM reports 
+        WHERE jobcard IS NOT NULL AND jobcard != ''
+      `).get();
+    }
+
     return {
       totalCount: totalRow?.cnt || 0,
       matchedCount: matchedRow?.cnt || 0
     };
   } catch {
     return { totalCount: 0, matchedCount: 0 };
+  }
+}
+
+export function clearPortalJobcards(centerCode?: string): { deletedCount: number; clearedReportsCount: number } {
+  const db = initDatabase();
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    let deletedCount = 0;
+    let clearedReportsCount = 0;
+
+    if (centerCode) {
+      const countRow: any = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards WHERE center_code = ?').get(centerCode);
+      deletedCount = countRow?.cnt || 0;
+
+      db.prepare('DELETE FROM portal_jobcards WHERE center_code = ?').run(centerCode);
+
+      const clearRes = db.prepare(`
+        UPDATE reports
+        SET jobcard = NULL
+        WHERE center_code = ? AND jobcard IS NOT NULL AND jobcard != ''
+      `).run(centerCode);
+      clearedReportsCount = (clearRes as any)?.changes || 0;
+    } else {
+      const countRow: any = db.prepare('SELECT COUNT(*) as cnt FROM portal_jobcards').get();
+      deletedCount = countRow?.cnt || 0;
+
+      db.prepare('DELETE FROM portal_jobcards').run();
+
+      const clearRes = db.prepare(`
+        UPDATE reports
+        SET jobcard = NULL
+        WHERE jobcard IS NOT NULL AND jobcard != ''
+      `).run();
+      clearedReportsCount = (clearRes as any)?.changes || 0;
+    }
+
+    db.exec('COMMIT;');
+    return { deletedCount, clearedReportsCount };
+  } catch (err) {
+    db.exec('ROLLBACK;');
+    throw err;
   }
 }
 
@@ -691,6 +784,8 @@ export function clearCenterData(centerCode: string): void {
   try {
     db.prepare('DELETE FROM reports WHERE center_code = ?').run(centerCode);
     db.prepare('DELETE FROM uploads WHERE center_code = ?').run(centerCode);
+    db.prepare('DELETE FROM portal_jobcards WHERE center_code = ?').run(centerCode);
+    db.prepare('UPDATE users SET google_sheet_url = NULL WHERE center_code = ?').run(centerCode);
     db.exec('COMMIT;');
   } catch (err) {
     db.exec('ROLLBACK;');

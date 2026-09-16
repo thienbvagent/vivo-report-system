@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import SummaryCards, { SummaryData } from '@/components/SummaryCards';
 import DataTable from '@/components/DataTable';
-import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle2, Link2, ExternalLink, Trash2, FileSpreadsheet, X } from 'lucide-react';
 import { ProcessedReportItem } from '@/lib/business-rules';
 
 export default function DashboardPage() {
@@ -33,15 +33,45 @@ export default function DashboardPage() {
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Lưu và tải Link Google Sheet từ localStorage
+  // Lưu và tải Link Google Sheet riêng cho từng TTBH
   useEffect(() => {
-    const saved = localStorage.getItem('vivo_google_sheet_url');
-    if (saved) setGoogleSheetUrl(saved);
-  }, []);
+    if (!user?.centerCode) return;
+    try {
+      // Dọn dẹp key dùng chung cũ nếu có
+      localStorage.removeItem('vivo_google_sheet_url');
+    } catch {}
+
+    const key = `vivo_google_sheet_url_${user.centerCode}`;
+    const localVal = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+    const serverVal = (user as any).googleSheetUrl || '';
+    const activeUrl = localVal !== null ? localVal : serverVal;
+    setGoogleSheetUrl(activeUrl);
+  }, [user]);
 
   const handleSheetUrlChange = (val: string) => {
     setGoogleSheetUrl(val);
-    localStorage.setItem('vivo_google_sheet_url', val);
+    if (user?.centerCode) {
+      const key = `vivo_google_sheet_url_${user.centerCode}`;
+      localStorage.setItem(key, val);
+      fetch('/api/settings/sheet-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: val })
+      }).catch(() => {});
+    }
+  };
+
+  const handleClearSheetUrl = () => {
+    setGoogleSheetUrl('');
+    if (user?.centerCode) {
+      const key = `vivo_google_sheet_url_${user.centerCode}`;
+      localStorage.removeItem(key);
+      fetch('/api/settings/sheet-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: '' })
+      }).catch(() => {});
+    }
   };
 
   const extractSheetId = (url: string) => {
@@ -325,14 +355,24 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
               <Link2 className="w-4 h-4" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <input
                 type="url"
                 placeholder="Dán link Google Sheet tại đây (https://docs.google.com/spreadsheets/d/.../edit)..."
                 value={googleSheetUrl}
                 onChange={e => handleSheetUrlChange(e.target.value)}
-                className="w-full text-xs sm:text-sm px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-700 placeholder:font-sans"
+                className="w-full text-xs sm:text-sm px-3 py-1.5 pr-8 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-700 placeholder:font-sans"
               />
+              {googleSheetUrl.trim() && (
+                <button
+                  type="button"
+                  onClick={handleClearSheetUrl}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 p-0.5 rounded transition"
+                  title="Xóa link Google Sheet của trung tâm này"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
           {googleSheetUrl.trim() && (

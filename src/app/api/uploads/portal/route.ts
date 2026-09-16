@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { parsePortalJobcardFile } from '@/lib/excel-parser';
-import { savePortalJobcards, getPortalJobcardsStats } from '@/lib/db-storage';
+import { savePortalJobcards, getPortalJobcardsStats, clearPortalJobcards } from '@/lib/db-storage';
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -12,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Chưa đăng nhập hoặc phiên làm việc đã hết hạn.' }, { status: 401 });
     }
 
-    const stats = getPortalJobcardsStats();
+    const stats = getPortalJobcardsStats(session.centerCode);
     return NextResponse.json({
       success: true,
       stats
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const result = savePortalJobcards(parseRes.records);
+    const result = savePortalJobcards(parseRes.records, session.centerCode);
 
     return NextResponse.json({
       success: true,
@@ -79,6 +79,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: false,
       error: `Lỗi hệ thống khi xử lý file Portal: ${err.message}`
+    }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await getCurrentSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Chưa đăng nhập hoặc phiên làm việc đã hết hạn.' }, { status: 401 });
+    }
+
+    const result = clearPortalJobcards(session.centerCode);
+    const stats = getPortalJobcardsStats(session.centerCode);
+
+    return NextResponse.json({
+      success: true,
+      message: `Đã làm sạch toàn bộ dữ liệu Portal Jobcard (${result.deletedCount} mã Jobcard đã xóa, ${result.clearedReportsCount} dòng báo cáo đã làm mới). Bạn có thể nạp file mới.`,
+      deletedCount: result.deletedCount,
+      clearedReportsCount: result.clearedReportsCount,
+      stats
+    });
+  } catch (err: any) {
+    console.error('Portal reset error:', err);
+    return NextResponse.json({
+      success: false,
+      error: `Lỗi hệ thống khi reset dữ liệu Portal: ${err.message}`
     }, { status: 500 });
   }
 }
