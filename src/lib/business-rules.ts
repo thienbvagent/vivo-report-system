@@ -288,8 +288,7 @@ export function transformExcelRows(
     const rawPickup = row[colTgLay];
     const pickupTime = normalizeText(rawPickup);
     if (!pickupTime) {
-      warningRows++;
-      warnings.push(`Dòng ${sourceRowNumber}: MISSING_PICKUP_TIME (Phiếu: ${normalizeText(row[colPhieu])})`);
+      // Dòng không có Thời gian lấy máy (null/trống): máy chưa giao khách -> không cần lọc ra báo cáo, bỏ qua bình thường
       continue;
     }
 

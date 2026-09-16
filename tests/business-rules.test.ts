@@ -290,11 +290,11 @@ test('Test 15b: Có linh kiện nhưng Phương án giải quyết khác (clean 
   assert.strictEqual(res.items[0]['Phương án giải quyết'], 'clean (without disassembling the machine)');
 });
 
-test('Test 16: Thời gian lấy máy null -> SKIP + warning', () => {
+test('Test 16: Thời gian lấy máy null -> SKIP (không lọc ra báo cáo và không xem là lỗi)', () => {
   const row = createMockRow({ 'Thời gian lấy máy': '' });
   const res = transformExcelRows([row], 'R4001003', 'Trung tâm CSKH vivo Cần Thơ');
   assert.strictEqual(res.validRows, 0);
-  assert.strictEqual(res.warningRows, 1);
+  assert.strictEqual(res.warningRows, 0);
 });
 
 test('Test 17: Một số phiếu có nhiều linh kiện -> giữ tất cả các dòng', () => {
@@ -396,7 +396,7 @@ test('TEST THỰC TẾ TRÊN FILE EXCEL MẪU D:\\VN0000182_...xlsx (Hoặc Fixt
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.inputRows, 994);
   assert.strictEqual(res.filteredBySolution, 485);
-  assert.strictEqual(res.warningRows, 22);
+  assert.strictEqual(res.warningRows, 0);
   // Có linh kiện + lấy máy hợp lệ: 487 dòng
   assert.strictEqual(res.validRows, 487);
   assert.strictEqual(res.tgddRows, 326);
@@ -509,7 +509,7 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
     assert.strictEqual(res.inputRows, 106);
     assert.strictEqual(res.validRows, 0);
     assert.strictEqual(res.filteredBySolution, 100);
-    assert.strictEqual(res.warningRows, 6);
+    assert.strictEqual(res.warningRows, 0);
     console.log(`-> File ZIP64 2026-09-15: Đọc thành công ${res.inputRows} dòng, ${res.validRows} dòng hợp lệ!`);
   }
 

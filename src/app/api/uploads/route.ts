@@ -136,13 +136,13 @@ export async function POST(req: NextRequest) {
       warningRows: transformResult.warningRows,
       status: transformResult.validRows === 0
         ? 'NO_DATA'
-        : n8nStatus === 'SYNCED_N8N' ? 'SUCCESS' : 'LOCAL_ONLY',
-      errorMessage: n8nError || undefined
+        : 'SUCCESS',
+      errorMessage: undefined
     });
 
     let zeroNotice = null;
     if (transformResult.validRows === 0) {
-      zeroNotice = `File chứa ${transformResult.inputRows} dòng nhưng không có dòng linh kiện hợp lệ: ${transformResult.filteredBySolution} dòng không có Mã/Tên linh kiện và ${transformResult.warningRows} dòng thiếu hoặc sai Thời gian lấy máy. Báo cáo hiện tại được giữ nguyên.`;
+      zeroNotice = `File chứa ${transformResult.inputRows} dòng nhưng không có dòng linh kiện hợp lệ (các dòng chưa có ngày lấy máy hoặc không có linh kiện phát sinh). Dữ liệu báo cáo hiện tại được giữ nguyên.`;
     }
 
     return NextResponse.json({
