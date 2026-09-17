@@ -101,6 +101,37 @@ export default function UploadsPage() {
     }
   };
 
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
+
+  const handleRetry = async (uploadId?: string) => {
+    if (uploadId) setRetryingId(uploadId);
+    else setRetryingAll(true);
+    setHistoryNotice(null);
+
+    try {
+      const res = await fetch('/api/sync-retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setHistoryNotice(`Đã đồng bộ lại thành công ${data.syncedCount || 1} bản ghi sang Google Sheets.`);
+        await fetchHistory();
+      } else {
+        setHistoryNotice(`Lỗi đồng bộ lại: ${data.error || 'Vui lòng kiểm tra lại kết nối n8n/Google Sheets.'}`);
+        await fetchHistory();
+      }
+    } catch (err: any) {
+      console.error('[Sync retry network error]:', err);
+      setHistoryNotice('Lỗi kết nối khi đồng bộ lại. Vui lòng kiểm tra lại kết nối mạng.');
+    } finally {
+      setRetryingId(null);
+      setRetryingAll(false);
+    }
+  };
+
   const fetchPortalStats = async () => {
     try {
       const res = await fetch('/api/uploads/portal');
@@ -158,7 +189,8 @@ export default function UploadsPage() {
         setPortalStats(data.stats || { totalCount: 0, matchedCount: 0 });
       }
     } catch (err: any) {
-      setPortalError('Lỗi kết nối khi reset: ' + err.message);
+      console.error('[Portal reset network error]:', err);
+      setPortalError('Lỗi kết nối khi làm sạch dữ liệu. Vui lòng kiểm tra lại kết nối mạng.');
     } finally {
       setPortalResetting(false);
     }
@@ -195,7 +227,8 @@ export default function UploadsPage() {
         fetchPortalStats();
       }
     } catch (err: any) {
-      setPortalError('Lỗi kết nối mạng: ' + err.message);
+      console.error('[Portal upload network error]:', err);
+      setPortalError('Lỗi kết nối mạng khi nạp file Portal. Vui lòng kiểm tra lại kết nối internet.');
     } finally {
       setPortalUploading(false);
     }
@@ -252,7 +285,8 @@ export default function UploadsPage() {
       setUploading(false);
       fetchHistory();
     } catch (err: any) {
-      setError('Lỗi kết nối: ' + err.message);
+      console.error('[Upload file network error]:', err);
+      setError('Lỗi kết nối mạng khi tải file. Vui lòng kiểm tra lại kết nối internet.');
       setUploading(false);
     }
   };
@@ -931,6 +965,21 @@ export default function UploadsPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {historyList.some(r => r.status === 'LOCAL_ONLY' || r.status === 'FAILED') && (
+                  <button
+                    onClick={() => handleRetry()}
+                    disabled={retryingAll || retryingId !== null}
+                    className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+                    title="Đồng bộ lại tất cả các bản ghi chưa gửi được sang Google Sheets qua n8n"
+                  >
+                    {retryingAll ? (
+                      <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    <span>Đồng Bộ Lại Tất Cả</span>
+                  </button>
+                )}
                 <button
                   onClick={fetchHistory}
                   disabled={loadingHistory}
@@ -972,12 +1021,14 @@ export default function UploadsPage() {
                         <th className="p-3">Tên File</th>
                         <th className="p-3 w-28 text-center">Tổng Dòng Raw</th>
                         <th className="p-3 w-28 text-center">Dòng Hợp Lệ</th>
-                        <th className="p-3 w-36 text-center">Trạng Thái</th>
+                        <th className="p-3 w-44 text-center">Trạng Thái</th>
+                        <th className="p-3 w-28 text-center">Thao Tác</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {historyList.map((record) => {
-                        const hasData = record.validRows > 0;
+                        const isPending = record.status === 'LOCAL_ONLY' || record.status === 'FAILED';
+                        const isThisRetrying = retryingId === record.uploadId || retryingAll;
 
                         return (
                           <tr key={record.uploadId} className="hover:bg-slate-50 transition-colors">
@@ -994,15 +1045,45 @@ export default function UploadsPage() {
                             <td className="p-3 text-center font-bold text-slate-700">{record.inputRows}</td>
                             <td className="p-3 text-center font-bold text-emerald-600">{record.validRows}</td>
                             <td className="p-3 text-center">
-                              {hasData ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                              {record.status === 'SUCCESS' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800" title="Đã lưu vào hệ thống và đồng bộ n8n">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                  Đã lưu vào hệ thống
+                                  Đã đồng bộ
+                                </span>
+                              ) : record.status === 'LOCAL_ONLY' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800" title={record.errorMessage || 'Đã lưu cục bộ, chưa gửi được sang n8n'}>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  Chỉ lưu nội bộ
+                                </span>
+                              ) : record.status === 'FAILED' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800" title={record.errorMessage || 'Đồng bộ thất bại'}>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Lỗi đồng bộ
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
                                   Không có linh kiện
                                 </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              {isPending && record.validRows > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRetry(record.uploadId)}
+                                  disabled={isThisRetrying}
+                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-[11px] rounded-lg transition inline-flex items-center gap-1 disabled:opacity-50"
+                                  title="Đồng bộ lại bản ghi này sang Google Sheets qua n8n"
+                                >
+                                  {retryingId === record.uploadId ? (
+                                    <div className="w-3 h-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="w-3 h-3" />
+                                  )}
+                                  <span>Gửi lại</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">-</span>
                               )}
                             </td>
                           </tr>

@@ -14,6 +14,8 @@ export interface StoredUser {
   centerName: string;
   passwordHash: string;
   googleSheetUrl?: string;
+  mustChangePassword?: boolean;
+  tokenVersion?: number;
   createdAt: string;
 }
 
@@ -53,12 +55,13 @@ export function closeDb(): void {
   }
 }
 
-function reportKey(item: ProcessedReportItem): string {
+function reportKey(item: ProcessedReportItem, seq: number = 1): string {
   const centerCode = String(item['Mã TTBH'] || '').trim().toUpperCase();
   const ticket = String(item['Số phiếu sửa chữa'] || '').trim();
   const partCode = String(item['Mã vật tư linh kiện'] || '').trim();
   const partName = String(item['Tên vật tư'] || '').trim().toLowerCase();
-  return [centerCode, ticket, partCode || `name:${partName}`].join('\u001f');
+  const base = [centerCode, ticket, partCode || `name:${partName}`].join('\u001f');
+  return seq > 1 ? `${base}\u001f${seq}` : base;
 }
 
 export function initDatabase(): DatabaseSync {
@@ -91,8 +94,19 @@ export function initDatabase(): DatabaseSync {
       center_code TEXT PRIMARY KEY,
       center_name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
+      google_sheet_url TEXT,
+      must_change_password INTEGER DEFAULT 0,
+      token_version INTEGER DEFAULT 1,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      token_id TEXT PRIMARY KEY,
+      center_code TEXT NOT NULL,
+      revoked_at TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens (expires_at);
 
     CREATE TABLE IF NOT EXISTS uploads (
       upload_id TEXT PRIMARY KEY,
@@ -144,17 +158,29 @@ export function initDatabase(): DatabaseSync {
     CREATE INDEX IF NOT EXISTS idx_reports_center_ticket ON reports (center_code, ticket_id);
 
     CREATE TABLE IF NOT EXISTS portal_jobcards (
-      bill_code TEXT PRIMARY KEY,
+      center_code TEXT NOT NULL DEFAULT 'R4001003',
+      bill_code TEXT NOT NULL,
       jobcard_code TEXT NOT NULL,
       imei TEXT,
       customer_name TEXT,
       phone TEXT,
       supermarket TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (center_code, bill_code)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_portal_jobcards_bill ON portal_jobcards (bill_code);
+    CREATE INDEX IF NOT EXISTS idx_portal_jobcards_center ON portal_jobcards (center_code);
+    CREATE INDEX IF NOT EXISTS idx_portal_jobcards_bill ON portal_jobcards (center_code, bill_code);
+
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      first_attempt_time INTEGER NOT NULL,
+      blocked_until INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limits_blocked ON rate_limits (blocked_until);
   `);
+
 
     // Ensure reports columns exist in pre-existing databases
     try {
@@ -168,19 +194,47 @@ export function initDatabase(): DatabaseSync {
       }
       db.exec('CREATE INDEX IF NOT EXISTS idx_reports_waybill ON reports (inbound_waybill);');
 
-      // Ensure users has google_sheet_url
+      // Ensure users has google_sheet_url, must_change_password, token_version
       const userCols: any[] = db.prepare('PRAGMA table_info(users);').all();
       const userColNames = new Set(userCols.map(c => c.name));
       if (!userColNames.has('google_sheet_url')) {
         db.exec('ALTER TABLE users ADD COLUMN google_sheet_url TEXT;');
       }
+      if (!userColNames.has('must_change_password')) {
+        db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0;');
+      }
+      if (!userColNames.has('token_version')) {
+        db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1;');
+      }
 
-      // Ensure portal_jobcards has center_code
+      // Check and migrate portal_jobcards to composite primary key (center_code, bill_code)
       const portalCols: any[] = db.prepare('PRAGMA table_info(portal_jobcards);').all();
       const portalColNames = new Set(portalCols.map(c => c.name));
       if (!portalColNames.has('center_code')) {
         db.exec("ALTER TABLE portal_jobcards ADD COLUMN center_code TEXT DEFAULT 'R4001003';");
-        db.exec('CREATE INDEX IF NOT EXISTS idx_portal_jobcards_center ON portal_jobcards (center_code);');
+      }
+      const pkCols = portalCols.filter(c => c.pk > 0).map(c => c.name);
+      // If table only has bill_code as single primary key, migrate to composite primary key
+      if (pkCols.length === 1 && pkCols[0] === 'bill_code') {
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS portal_jobcards_migrated (
+            center_code TEXT NOT NULL DEFAULT 'R4001003',
+            bill_code TEXT NOT NULL,
+            jobcard_code TEXT NOT NULL,
+            imei TEXT,
+            customer_name TEXT,
+            phone TEXT,
+            supermarket TEXT,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (center_code, bill_code)
+          );
+          INSERT OR IGNORE INTO portal_jobcards_migrated (center_code, bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at)
+          SELECT COALESCE(center_code, 'R4001003'), bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at FROM portal_jobcards;
+          DROP TABLE portal_jobcards;
+          ALTER TABLE portal_jobcards_migrated RENAME TO portal_jobcards;
+          CREATE INDEX IF NOT EXISTS idx_portal_jobcards_center ON portal_jobcards (center_code);
+          CREATE INDEX IF NOT EXISTS idx_portal_jobcards_bill ON portal_jobcards (center_code, bill_code);
+        `);
       }
     } catch {}
 
@@ -190,21 +244,22 @@ export function initDatabase(): DatabaseSync {
   // Seed default users if users table is empty
   const userCount = (db.prepare('SELECT COUNT(*) as cnt FROM users').get() as any)?.cnt || 0;
   if (userCount === 0) {
-    const initialPassword = process.env.INITIAL_CENTER_PASSWORD;
-    if (!initialPassword) {
+    const initialPasswordDefault = process.env.INITIAL_CENTER_PASSWORD;
+    if (!initialPasswordDefault) {
       throw new Error('Thiếu biến môi trường INITIAL_CENTER_PASSWORD để khởi tạo tài khoản TTBH.');
     }
-    const defaultHash = bcrypt.hashSync(initialPassword, 10);
     const insertUser = db.prepare(`
-      INSERT INTO users (center_code, center_name, password_hash, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO users (center_code, center_name, password_hash, must_change_password, token_version, created_at)
+      VALUES (?, ?, ?, 1, 1, ?)
     `);
 
     db.exec('BEGIN IMMEDIATE;');
     try {
       const now = new Date().toISOString();
       for (const c of getAllCenters()) {
-        insertUser.run(c.code, c.name, defaultHash, now);
+        const envPass = process.env[`INITIAL_PASSWORD_${c.code}`] || initialPasswordDefault;
+        const hash = bcrypt.hashSync(envPass, 10);
+        insertUser.run(c.code, c.name, hash, now);
       }
       db.exec('COMMIT;');
     } catch (e) {
@@ -310,14 +365,71 @@ export function findUserByCode(code: string): StoredUser | null {
     centerName: row.center_name,
     passwordHash: row.password_hash,
     googleSheetUrl: row.google_sheet_url || '',
+    mustChangePassword: Boolean(row.must_change_password),
+    tokenVersion: row.token_version || 1,
     createdAt: row.created_at
   };
 }
 
 export function updateUserPassword(centerCode: string, newPasswordHash: string): boolean {
   const db = initDatabase();
-  const res = db.prepare('UPDATE users SET password_hash = ? WHERE center_code = ?').run(newPasswordHash, centerCode);
+  const res = db.prepare(`
+    UPDATE users 
+    SET password_hash = ?, 
+        must_change_password = 0, 
+        token_version = COALESCE(token_version, 1) + 1 
+    WHERE center_code = ?
+  `).run(newPasswordHash, centerCode);
   return ((res as any)?.changes || 0) > 0;
+}
+
+export function getUserTokenVersion(centerCode: string): number {
+  const db = initDatabase();
+  try {
+    const row: any = db.prepare('SELECT token_version FROM users WHERE center_code = ?').get(centerCode);
+    return row?.token_version || 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function revokeToken(tokenId: string, centerCode: string, expiresAt: number): void {
+  const db = initDatabase();
+  try {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT OR REPLACE INTO revoked_tokens (token_id, center_code, revoked_at, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(tokenId, centerCode, now, expiresAt);
+  } catch {}
+}
+
+export function isTokenRevoked(tokenId: string): boolean {
+  const db = initDatabase();
+  try {
+    const row: any = db.prepare('SELECT token_id FROM revoked_tokens WHERE token_id = ?').get(tokenId);
+    return Boolean(row);
+  } catch {
+    return false;
+  }
+}
+
+export function cleanupExpiredRevokedTokens(): void {
+  const db = initDatabase();
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    db.prepare('DELETE FROM revoked_tokens WHERE expires_at < ?').run(nowSec);
+  } catch {}
+}
+
+export function getReportItemsByUploadId(centerCode: string, uploadId: string): ProcessedReportItem[] {
+  const db = initDatabase();
+  const rows: any[] = db.prepare(`
+    SELECT * FROM reports 
+    WHERE center_code = ? AND upload_id = ?
+    ORDER BY report_date ASC, ticket_id ASC, source_row_number ASC
+  `).all(centerCode, uploadId);
+  return rows.map(rowToReportItem);
 }
 
 export function updateUserSheetUrl(centerCode: string, sheetUrl: string): boolean {
@@ -333,6 +445,24 @@ export function getUserSheetUrl(centerCode: string): string {
     return row?.google_sheet_url || '';
   } catch {
     return '';
+  }
+}
+
+export function isSpreadsheetIdUsedByOtherCenter(centerCode: string, spreadsheetId: string): boolean {
+  if (!spreadsheetId) return false;
+  const db = initDatabase();
+  try {
+    const rows: any[] = db.prepare('SELECT center_code, google_sheet_url FROM users WHERE center_code != ? AND google_sheet_url IS NOT NULL').all(centerCode);
+    for (const r of rows) {
+      const match = String(r.google_sheet_url || '').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      const otherId = match ? match[1] : String(r.google_sheet_url || '').trim();
+      if (otherId && otherId === spreadsheetId) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -420,10 +550,10 @@ function saveReportItemsInternal(
 
   db.exec('BEGIN IMMEDIATE;');
   try {
-    const jobcardMap = getJobcardMapInternal(db);
+    const centerCode = items[0]?.['Mã TTBH'] || '';
+    const jobcardMap = getJobcardMapInternal(db, centerCode || undefined);
 
     if (mode === 'replace_center') {
-      const centerCode = items[0]['Mã TTBH'];
       if (items.some(item => item['Mã TTBH'] !== centerCode)) {
         throw new Error('Không thể ghi đè dữ liệu của nhiều TTBH trong cùng một lần tải lên.');
       }
@@ -446,9 +576,18 @@ function saveReportItemsInternal(
         )
       `);
 
+      const occurrenceCounter = new Map<string, number>();
       for (const item of items) {
-        const id = reportKey(item);
-        const cleanWaybill = String(item['Số vận đơn nhanh (nhận)'] || '').trim().replace(/\s+/g, '');
+        const center = String(item['Mã TTBH'] || '').trim().toUpperCase();
+        const ticket = String(item['Số phiếu sửa chữa'] || '').trim();
+        const partCode = String(item['Mã vật tư linh kiện'] || '').trim();
+        const partName = String(item['Tên vật tư'] || '').trim().toLowerCase();
+        const baseKey = [center, ticket, partCode || `name:${partName}`].join('\u001f');
+        const seq = (occurrenceCounter.get(baseKey) || 0) + 1;
+        occurrenceCounter.set(baseKey, seq);
+        const id = reportKey(item, seq);
+
+        const cleanWaybill = String(item['Số vận đơn nhanh (nhận)'] || '').trim().replace(/\s+/g, '').toUpperCase();
         let jc = item['Jobcard'] || '';
         if (!jc && cleanWaybill && jobcardMap.has(cleanWaybill)) {
           jc = jobcardMap.get(cleanWaybill)!;
@@ -518,8 +657,17 @@ function saveReportItemsInternal(
         WHERE id = ?
       `);
 
+      const occurrenceCounter = new Map<string, number>();
       for (const item of items) {
-        const id = reportKey(item);
+        const center = String(item['Mã TTBH'] || '').trim().toUpperCase();
+        const ticket = String(item['Số phiếu sửa chữa'] || '').trim();
+        const partCode = String(item['Mã vật tư linh kiện'] || '').trim();
+        const partName = String(item['Tên vật tư'] || '').trim().toLowerCase();
+        const baseKey = [center, ticket, partCode || `name:${partName}`].join('\u001f');
+        const seq = (occurrenceCounter.get(baseKey) || 0) + 1;
+        occurrenceCounter.set(baseKey, seq);
+        const id = reportKey(item, seq);
+
         const cleanWaybill = String(item['Số vận đơn nhanh (nhận)'] || '').trim().replace(/\s+/g, '').toUpperCase();
         let jc = item['Jobcard'] || '';
         if (!jc && cleanWaybill && jobcardMap.has(cleanWaybill)) {
@@ -634,8 +782,7 @@ export function savePortalJobcards(records: PortalJobcardRecord[], centerCode: s
     const insertStmt = db.prepare(`
       INSERT INTO portal_jobcards (center_code, bill_code, jobcard_code, imei, customer_name, phone, supermarket, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(bill_code) DO UPDATE SET
-        center_code = excluded.center_code,
+      ON CONFLICT(center_code, bill_code) DO UPDATE SET
         jobcard_code = excluded.jobcard_code,
         imei = COALESCE(excluded.imei, portal_jobcards.imei),
         customer_name = COALESCE(excluded.customer_name, portal_jobcards.customer_name),
@@ -819,3 +966,51 @@ export function getDateCounts(centerCode: string): Record<string, number> {
   }
   return counts;
 }
+
+export interface DbRateLimitRecord {
+  key: string;
+  count: number;
+  first_attempt_time: number;
+  blocked_until: number | null;
+}
+
+export function getRateLimitRecord(key: string): DbRateLimitRecord | null {
+  const db = initDatabase();
+  const row = db.prepare('SELECT key, count, first_attempt_time, blocked_until FROM rate_limits WHERE key = ?').get(key) as any;
+  if (!row) return null;
+  return {
+    key: row.key,
+    count: row.count,
+    first_attempt_time: row.first_attempt_time,
+    blocked_until: row.blocked_until
+  };
+}
+
+export function saveRateLimitRecord(key: string, count: number, firstAttemptTime: number, blockedUntil: number | null): void {
+  const db = initDatabase();
+  db.prepare(`
+    INSERT INTO rate_limits (key, count, first_attempt_time, blocked_until)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = excluded.count,
+      first_attempt_time = excluded.first_attempt_time,
+      blocked_until = excluded.blocked_until
+  `).run(key, count, firstAttemptTime, blockedUntil);
+}
+
+export function deleteRateLimitRecord(key: string): void {
+  const db = initDatabase();
+  db.prepare('DELETE FROM rate_limits WHERE key = ?').run(key);
+}
+
+export function clearAllRateLimitsFromDb(): void {
+  const db = initDatabase();
+  db.prepare('DELETE FROM rate_limits').run();
+}
+
+export function cleanupExpiredRateLimits(): void {
+  const db = initDatabase();
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  db.prepare('DELETE FROM rate_limits WHERE first_attempt_time < ? AND (blocked_until IS NULL OR blocked_until < ?)').run(oneHourAgo, Date.now());
+}
+

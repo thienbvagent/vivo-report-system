@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { getReportItems, getAvailableDates, getDateCounts, getUploads, clearCenterData } from '@/lib/db-storage';
+import { handleApiError } from '@/lib/api-errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
       rows: items
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Không thể tải dữ liệu báo cáo. Vui lòng thử lại sau.');
   }
 }
 
@@ -68,6 +69,7 @@ export async function DELETE(req: NextRequest) {
     clearCenterData(session.centerCode);
     return NextResponse.json({ success: true, message: 'Đã làm mới và xóa toàn bộ dữ liệu báo cáo cũ của trung tâm.' });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Không thể xóa dữ liệu báo cáo. Vui lòng thử lại sau.');
   }
 }
+

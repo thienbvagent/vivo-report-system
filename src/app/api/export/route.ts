@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { exportBaoCaoToN8n } from '@/lib/n8n-client';
-import { getReportItems } from '@/lib/db-storage';
+import { getReportItems, getUserSheetUrl, updateUserSheetUrl, isSpreadsheetIdUsedByOtherCenter } from '@/lib/db-storage';
 import { generateTanTamDebtReportExcel, generateFullReportExcel } from '@/lib/export-excel';
+import { handleApiError } from '@/lib/api-errors';
 import * as XLSX from 'xlsx';
+
 
 function extractSpreadsheetId(input: unknown): string {
   const value = String(input || '').trim();
@@ -24,22 +26,16 @@ export async function GET(req: NextRequest) {
 
     // 1. Xuất Báo Cáo Công Nợ Tận Tâm (theo chuẩn file mẫu TTBH CẦN THƠ - Báo cáo Công Nợ Tận Tâm.xlsx)
     if (exportType === 'tantam') {
-      if (!report_date || report_date === 'ALL' || !/^\d{4}-\d{2}-\d{2}$/.test(report_date)) {
-        return NextResponse.json({
-          success: false,
-          error: 'Vui lòng chọn một ngày báo cáo cụ thể (ví dụ: 2026-09-15) để xuất Báo cáo Công Nợ Tận Tâm.'
-        }, { status: 400 });
+      const items = getReportItems(session.centerCode, report_date);
+      if (items.length === 0) {
+        return NextResponse.json({ success: false, error: 'Không có dữ liệu để xuất báo cáo công nợ.' }, { status: 404 });
       }
 
-      const reportItems = getReportItems(session.centerCode, report_date);
-      if (reportItems.length === 0) {
-        return NextResponse.json({
-          success: false,
-          error: `Không tìm thấy dữ liệu báo cáo cho ngày ${report_date}.`
-        }, { status: 404 });
-      }
-
-      const result = await generateTanTamDebtReportExcel(reportItems, session.centerName, report_date);
+      const result = await generateTanTamDebtReportExcel(
+        items,
+        session.centerName,
+        report_date
+      );
 
       const encodedFilename = encodeURIComponent(result.filename);
       return new NextResponse(new Uint8Array(result.buffer), {
@@ -51,21 +47,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 2. Xuất Báo Cáo Đầy Đủ (bao gồm tất cả các thông tin được show ra trên giao diện)
-    const reportItems = report_date === 'ALL'
-      ? getReportItems(session.centerCode)
-      : getReportItems(session.centerCode, report_date);
-
-    if (reportItems.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: report_date === 'ALL'
-          ? 'Không có dữ liệu báo cáo nào trong hệ thống.'
-          : `Không có dữ liệu báo cáo cho ngày ${report_date}.`
-      }, { status: 404 });
+    // 2. Xuất Báo Cáo Đầy Đủ Chi Tiết (toàn bộ cột trên UI)
+    const items = getReportItems(session.centerCode, report_date);
+    if (items.length === 0) {
+      return NextResponse.json({ success: false, error: 'Không có dữ liệu để xuất báo cáo chi tiết.' }, { status: 404 });
     }
 
-    const result = await generateFullReportExcel(reportItems, session.centerCode, session.centerName, report_date);
+    const result = await generateFullReportExcel(
+      items,
+      session.centerCode,
+      session.centerName,
+      report_date
+    );
 
     const encodedFilename = encodeURIComponent(result.filename);
     return new NextResponse(new Uint8Array(result.buffer), {
@@ -76,7 +69,7 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Lỗi xuất file Excel báo cáo. Vui lòng thử lại sau.');
   }
 }
 
@@ -92,9 +85,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Vui lòng chọn ngày báo cáo để xuất.' }, { status: 400 });
     }
 
-    const spreadsheetId = extractSpreadsheetId(spreadsheet_id || sheet_url);
-    if (!/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
-      return NextResponse.json({ success: false, error: 'Link hoặc Spreadsheet ID của Google Sheets không hợp lệ.' }, { status: 400 });
+    const userConfiguredUrl = getUserSheetUrl(session.centerCode);
+    let configuredSpreadsheetId = extractSpreadsheetId(userConfiguredUrl);
+
+    const requestedId = extractSpreadsheetId(spreadsheet_id || sheet_url);
+    const spreadsheetId = requestedId || configuredSpreadsheetId;
+
+    if (!spreadsheetId || !/^[a-zA-Z0-9_-]{20,}$/.test(spreadsheetId)) {
+      return NextResponse.json({ success: false, error: 'Link hoặc Spreadsheet ID của Google Sheets không hợp lệ. Vui lòng kiểm tra lại.' }, { status: 400 });
+    }
+
+    // Kiểm tra xem Spreadsheet ID này có đang được sử dụng bởi một TTBH khác không
+    if (isSpreadsheetIdUsedByOtherCenter(session.centerCode, spreadsheetId)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Spreadsheet ID này đã được liên kết với một TTBH khác. Mỗi TTBH phải sử dụng một Google Sheet riêng biệt.'
+      }, { status: 403 });
+    }
+
+    // Tự động lưu cấu hình Google Sheet cho TTBH này nếu có thay đổi hoặc cấu hình mới
+    if (requestedId && requestedId !== configuredSpreadsheetId) {
+      const fullUrl = String(sheet_url || `https://docs.google.com/spreadsheets/d/${requestedId}`).trim();
+      updateUserSheetUrl(session.centerCode, fullUrl);
+      configuredSpreadsheetId = requestedId;
+    }
+
+    // Nếu quản trị viên có cấu hình ALLOWED_SPREADSHEET_IDS trong môi trường thì kiểm tra whitelist
+    const envAllowed = (process.env.ALLOWED_SPREADSHEET_IDS || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (envAllowed.length > 0 && !envAllowed.includes(spreadsheetId)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Spreadsheet ID không nằm trong danh sách được cấp phép trên hệ thống.'
+      }, { status: 403 });
     }
 
     const reportItems = getReportItems(session.centerCode, report_date);
@@ -140,26 +165,26 @@ export async function POST(req: NextRequest) {
         monthYear
       );
       if (n8nRes && n8nRes.success === false) {
+        console.error('[Export n8n error]:', n8nRes);
         return NextResponse.json({
           success: false,
-          error: `Xuất Google Sheets thất bại từ n8n: ${n8nRes.error || 'Quy trình n8n báo lỗi.'}`,
-          details: n8nRes
+          error: 'Xuất Google Sheets thất bại qua dịch vụ n8n. Vui lòng thử lại sau.'
         }, { status: 502 });
       }
 
       return NextResponse.json({
         success: true,
-        message: `Đã xuất ${exportItems.length} dòng sang tab ${monthYear || 'Google Sheets'} thành công.`,
-        details: n8nRes
+        message: `Đã xuất ${exportItems.length} dòng sang tab ${monthYear || 'Google Sheets'} thành công.`
       });
     } catch (n8nErr: any) {
+      console.error('[Export n8n error]:', n8nErr);
       return NextResponse.json({
         success: false,
-        error: `Xuất Google Sheets thất bại: ${n8nErr.message}`
+        error: 'Xuất Google Sheets thất bại do sự cố kết nối n8n. Vui lòng thử lại sau.'
       }, { status: 502 });
     }
 
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Lỗi xuất dữ liệu báo cáo. Vui lòng thử lại sau.');
   }
 }

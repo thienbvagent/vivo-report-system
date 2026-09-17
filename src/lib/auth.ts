@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { getCenterName, isValidCenterCode } from './centers';
-import { findUserByCode, initDatabase } from './db-storage';
+import { findUserByCode, initDatabase, getUserTokenVersion, isTokenRevoked } from './db-storage';
 
 function getJwtSecret(): Uint8Array {
   const value = process.env.SESSION_SECRET;
@@ -17,6 +17,7 @@ export const AUTH_COOKIE_NAME = 'vivo_session_token';
 export interface UserSession {
   centerCode: string;
   centerName: string;
+  mustChangePassword?: boolean;
 }
 
 export async function hashPassword(plain: string): Promise<string> {
@@ -29,8 +30,11 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 
 export async function createSessionToken(centerCode: string): Promise<string> {
   const centerName = getCenterName(centerCode);
-  return new SignJWT({ centerCode, centerName })
+  const tokenVersion = getUserTokenVersion(centerCode);
+  const jti = crypto.randomUUID();
+  return new SignJWT({ centerCode, centerName, tokenVersion })
     .setProtectedHeader({ alg: 'HS256' })
+    .setJti(jti)
     .setIssuedAt()
     .setExpirationTime('7d')
     .sign(getJwtSecret());
@@ -41,10 +45,30 @@ export async function verifySessionToken(token: string): Promise<UserSession | n
     const { payload } = await jwtVerify(token, getJwtSecret());
     const centerCode = payload.centerCode as string;
     const centerName = payload.centerName as string;
+    const jti = payload.jti as string;
+    const tokenVersion = payload.tokenVersion as number | undefined;
+
     if (!centerCode || !isValidCenterCode(centerCode)) {
       return null;
     }
-    return { centerCode, centerName };
+
+    // Check if token was explicitly revoked on logout
+    if (jti && isTokenRevoked(jti)) {
+      return null;
+    }
+
+    // Check if token was invalidated by a password change (token_version incremented)
+    const currentVersion = getUserTokenVersion(centerCode);
+    if (tokenVersion !== undefined && tokenVersion !== currentVersion) {
+      return null;
+    }
+
+    const user = findUserByCode(centerCode);
+    return {
+      centerCode,
+      centerName,
+      mustChangePassword: user?.mustChangePassword
+    };
   } catch {
     return null;
   }
@@ -79,7 +103,8 @@ export async function authenticateUser(centerCode: string, password: string): Pr
     success: true,
     session: {
       centerCode: trimmedCode,
-      centerName: getCenterName(trimmedCode)
+      centerName: getCenterName(trimmedCode),
+      mustChangePassword: user.mustChangePassword
     }
   };
 }

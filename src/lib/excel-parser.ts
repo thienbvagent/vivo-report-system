@@ -12,9 +12,18 @@ import * as XLSX from 'xlsx';
  * lay kich thuoc thuc te (thuong chi vai KB / MB) va ghi de vao cac truong 32-bit,
  * cho phep SheetJS doc file muot ma trong vai mili-giay.
  */
+export const MAX_SINGLE_ENTRY_UNCOMPRESSED = 50 * 1024 * 1024; // 50 MB
+export const MAX_TOTAL_UNCOMPRESSED_SIZE = 150 * 1024 * 1024; // 150 MB
 export const MAX_UNCOMPRESSED_SIZE = 150 * 1024 * 1024; // 150 MB
+export const MAX_ZIP_ENTRIES = 500;
+export const MAX_EXCEL_ROWS = 50_000;
+
 
 export function fixZip64Buffer(inputBuf: Buffer): Buffer {
+  return validateAndSanitizeZipBuffer(inputBuf);
+}
+
+export function validateAndSanitizeZipBuffer(inputBuf: Buffer): Buffer {
   const buf = Buffer.from(inputBuf);
   // Tim End of Central Directory Record (EOCD - signature: 0x06054b50)
   let eocd = -1;
@@ -27,8 +36,15 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
   if (eocd === -1) return buf;
 
   const numEntries = buf.readUInt16LE(eocd + 10);
+  if (numEntries > MAX_ZIP_ENTRIES) {
+    throw new Error(
+      `Tập tin nén chứa quá nhiều phần tử (${numEntries} > ${MAX_ZIP_ENTRIES}). Từ chối xử lý để phòng chống tấn công DoS.`
+    );
+  }
+
   const cdOffset = buf.readUInt32LE(eocd + 16);
   let offset = cdOffset;
+  let totalUncompressedSize = 0;
 
   for (let i = 0; i < numEntries; i++) {
     if (offset + 46 > buf.length || buf.readUInt32LE(offset) !== 0x02014b50) break;
@@ -39,10 +55,12 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
     const commentLen = buf.readUInt16LE(offset + 32);
     const localHeaderOffset = buf.readUInt32LE(offset + 42);
 
+    let actualUncomp: number | null = null;
+    let actualComp: number | null = null;
+
     if (comp32 === 0xFFFFFFFF || uncomp32 === 0xFFFFFFFF) {
       const cdExtra = buf.subarray(offset + 46 + fnLen, offset + 46 + fnLen + extraLen);
       let p = 0;
-      let actualUncomp: number | null = null, actualComp: number | null = null;
       while (p + 4 <= cdExtra.length) {
         const tag = cdExtra.readUInt16LE(p);
         const sz = cdExtra.readUInt16LE(p + 2);
@@ -55,13 +73,7 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
       }
 
       if (actualUncomp !== null && actualComp !== null) {
-        if (actualUncomp > MAX_UNCOMPRESSED_SIZE) {
-          throw new Error(
-            `Kích thước tập tin giải nén vượt quá giới hạn an toàn (${Math.round(actualUncomp / (1024 * 1024))}MB > 150MB). Từ chối xử lý để ngăn ngừa nguy cơ cạn kiệt bộ nhớ (Zip Bomb).`
-          );
-        }
-
-        // Cap nhat Central Directory
+        // Cap nhat Central Directory de SheetJS doc duoc
         buf.writeUInt32LE(actualComp, offset + 20);
         buf.writeUInt32LE(actualUncomp, offset + 24);
 
@@ -73,6 +85,33 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
       }
     }
 
+    // Dung lượng thực tế của entry (cả ZIP tiêu chuẩn lẫn ZIP64)
+    const entryUncomp = actualUncomp !== null ? actualUncomp : uncomp32;
+    const entryComp = actualComp !== null ? actualComp : comp32;
+
+    // 1. Kiểm tra kích thước từng entry đơn lẻ
+    if (entryUncomp > MAX_SINGLE_ENTRY_UNCOMPRESSED) {
+      throw new Error(
+        `Kích thước tập tin giải nén vượt quá giới hạn an toàn cho một phần tử (${Math.round(entryUncomp / (1024 * 1024))}MB > 50MB). Từ chối xử lý để ngăn ngừa nguy cơ cạn kiệt bộ nhớ (Zip Bomb).`
+      );
+    }
+
+
+    // 2. Tích lũy và kiểm tra tổng dung lượng giải nén
+    totalUncompressedSize += entryUncomp;
+    if (totalUncompressedSize > MAX_TOTAL_UNCOMPRESSED_SIZE) {
+      throw new Error(
+        `Tổng dung lượng giải nén (${Math.round(totalUncompressedSize / (1024 * 1024))}MB) vượt quá giới hạn an toàn 100MB. Từ chối xử lý để phòng ngừa Zip Bomb.`
+      );
+    }
+
+    // 3. Kiểm tra tỉ lệ nén bất thường (Zip Bomb ratio threshold)
+    if (entryUncomp > 5 * 1024 * 1024 && entryComp > 0 && (entryUncomp / entryComp) > 50) {
+      throw new Error(
+        `Tỉ lệ nén bất thường (${Math.round(entryUncomp / entryComp)}:1). Từ chối xử lý để phòng chống tấn công Zip Bomb.`
+      );
+    }
+
     offset += 46 + fnLen + extraLen + commentLen;
   }
 
@@ -80,9 +119,10 @@ export function fixZip64Buffer(inputBuf: Buffer): Buffer {
 }
 
 export function readExcelBuffer(buffer: Buffer): XLSX.WorkBook {
-  const safeBuffer = fixZip64Buffer(buffer);
+  const safeBuffer = validateAndSanitizeZipBuffer(buffer);
   return XLSX.read(safeBuffer, { type: 'buffer' });
 }
+
 
 export interface PortalJobcardParsedResult {
   success: boolean;
@@ -109,6 +149,14 @@ export function parsePortalJobcardFile(buffer: Buffer): PortalJobcardParsedResul
     if (!rawRows || rawRows.length === 0) {
       return { success: false, error: 'File Excel không chứa dữ liệu dòng nào.', records: [] };
     }
+    if (rawRows.length > MAX_EXCEL_ROWS) {
+      return {
+        success: false,
+        error: `Số lượng dòng trong file (${rawRows.length}) vượt quá giới hạn an toàn (${MAX_EXCEL_ROWS.toLocaleString()} dòng).`,
+        records: []
+      };
+    }
+
 
     const firstRow = rawRows[0];
     const allKeys = Object.keys(firstRow);
@@ -159,9 +207,15 @@ export function parsePortalJobcardFile(buffer: Buffer): PortalJobcardParsedResul
       records
     };
   } catch (err: any) {
+    console.error('[parsePortalJobcardFile error]:', err);
+    const isSafe = typeof err?.message === 'string' && (
+      err.message.includes('giới hạn an toàn') ||
+      err.message.includes('quá nhiều phần tử') ||
+      err.message.includes('Zip Bomb')
+    );
     return {
       success: false,
-      error: `Lỗi khi đọc file Portal: ${err.message}`,
+      error: isSafe ? err.message : 'Lỗi khi đọc file Portal Jobcard. Vui lòng kiểm tra lại định dạng file Excel.',
       records: []
     };
   }

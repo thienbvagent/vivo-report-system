@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import path from 'path';
 import fs from 'fs';
 import * as XLSX from 'xlsx';
-import { transformExcelRows, RawExcelRow } from '../src/lib/business-rules';
+import { transformExcelRows, RawExcelRow, parseMoneyPreserveNull } from '../src/lib/business-rules';
 
 function createMockRow(overrides: Partial<RawExcelRow> = {}): RawExcelRow {
   return {
@@ -541,6 +541,31 @@ test('Test 24: Đọc file Excel có định dạng ZIP64 không bị lỗi Fail
   }, /Kích thước tập tin giải nén vượt quá giới hạn an toàn/);
 });
 
+test('Test 24b: Chống Zip Bomb cho file ZIP tiêu chuẩn non-ZIP64 và giới hạn số entries', () => {
+  const { validateAndSanitizeZipBuffer } = require('../src/lib/excel-parser');
+
+  // 1. Quá số lượng entries (> 500)
+  const tooManyEntries = Buffer.alloc(100);
+  tooManyEntries.writeUInt32LE(0x06054b50, 100 - 22);
+  tooManyEntries.writeUInt16LE(501, 100 - 12); // 501 entries > 500
+  assert.throws(() => {
+    validateAndSanitizeZipBuffer(tooManyEntries);
+  }, /quá nhiều phần tử/);
+
+  // 2. File ZIP tiêu chuẩn non-ZIP64 có dung lượng uncomp32 > 50MB
+  const standardZipBomb = Buffer.alloc(120);
+  standardZipBomb.writeUInt32LE(0x06054b50, 120 - 22);
+  standardZipBomb.writeUInt16LE(1, 120 - 12);
+  standardZipBomb.writeUInt32LE(0, 120 - 6);
+  standardZipBomb.writeUInt32LE(0x02014b50, 0);
+  standardZipBomb.writeUInt32LE(1000, 20); // compressed = 1000
+  standardZipBomb.writeUInt32LE(60 * 1024 * 1024, 24); // uncomp32 = 60MB > 50MB
+  assert.throws(() => {
+    validateAndSanitizeZipBuffer(standardZipBomb);
+  }, /Kích thước tập tin giải nén vượt quá giới hạn an toàn/);
+});
+
+
 test('Test 25: Thống kê số lượng phiếu theo Phương án giải quyết (solutionStats)', () => {
   const rows = [
     createMockRow({
@@ -621,4 +646,24 @@ test('Test 26: Trường Xuất phụ kiện và Jobcard được khởi tạo r
   assert.strictEqual(res.items[0]['Xuất phụ kiện'], '');
   assert.strictEqual(res.items[0]['Jobcard'], '');
 });
+
+test('Test 27: parseMoneyPreserveNull đọc đúng tiền Việt Nam dạng text (1.234.567 -> 1234567, 150.000 -> 150000)', () => {
+  assert.strictEqual(parseMoneyPreserveNull('1.234.567'), 1234567);
+  assert.strictEqual(parseMoneyPreserveNull('150.000'), 150000);
+  assert.strictEqual(parseMoneyPreserveNull('1.234.567,50'), 1234567.5);
+  assert.strictEqual(parseMoneyPreserveNull('1,234,567'), 1234567);
+  assert.strictEqual(parseMoneyPreserveNull('1,234,567.50'), 1234567.5);
+  assert.strictEqual(parseMoneyPreserveNull('-150.000'), -150000);
+  assert.strictEqual(parseMoneyPreserveNull('(150.000)'), -150000);
+  assert.strictEqual(parseMoneyPreserveNull('1.234.567 đ'), 1234567);
+  assert.strictEqual(parseMoneyPreserveNull('1.234.567 VND'), 1234567);
+  assert.strictEqual(parseMoneyPreserveNull('0'), 0);
+  assert.strictEqual(parseMoneyPreserveNull(0), 0);
+  assert.strictEqual(parseMoneyPreserveNull(500000), 500000);
+  assert.strictEqual(parseMoneyPreserveNull(''), null);
+  assert.strictEqual(parseMoneyPreserveNull(null), null);
+  assert.strictEqual(parseMoneyPreserveNull(undefined), null);
+  assert.strictEqual(parseMoneyPreserveNull('abc'), null);
+});
+
 

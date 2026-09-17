@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { parsePortalJobcardFile } from '@/lib/excel-parser';
 import { savePortalJobcards, getPortalJobcardsStats, clearPortalJobcards } from '@/lib/db-storage';
+import { handleApiError } from '@/lib/api-errors';
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -18,9 +19,10 @@ export async function GET() {
       stats
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Không thể tải thống kê Portal Jobcard.');
   }
 }
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -75,11 +77,7 @@ export async function POST(req: NextRequest) {
       message: `Đã nạp thành công ${result.totalSaved} mã Jobcard từ Portal TGDĐ. Tự động đồng bộ và gán mã Jobcard cho ${result.updatedReportsCount} dòng linh kiện/phiếu sửa chữa trong cơ sở dữ liệu.`
     });
   } catch (err: any) {
-    console.error('Portal upload error:', err);
-    return NextResponse.json({
-      success: false,
-      error: `Lỗi hệ thống khi xử lý file Portal: ${err.message}`
-    }, { status: 500 });
+    return handleApiError(err, 'Lỗi hệ thống khi xử lý file Portal Jobcard.');
   }
 }
 
@@ -101,10 +99,7 @@ export async function DELETE() {
       stats
     });
   } catch (err: any) {
-    console.error('Portal reset error:', err);
-    return NextResponse.json({
-      success: false,
-      error: `Lỗi hệ thống khi reset dữ liệu Portal: ${err.message}`
-    }, { status: 500 });
+    return handleApiError(err, 'Lỗi hệ thống khi reset dữ liệu Portal Jobcard.');
   }
 }
+

@@ -133,12 +133,62 @@ export function validateHeaders(rows: RawExcelRow[]): { valid: boolean; missingC
 
 export function parseMoneyPreserveNull(val: any): number | null {
   if (val === null || val === undefined) return null;
-  const s = String(val).trim();
+  if (typeof val === 'number') {
+    return isNaN(val) ? null : val;
+  }
+  let s = String(val).trim();
   if (s === '') return null;
-  const num = typeof val === 'number' ? val : parseFloat(s.replace(/[^0-9.-]+/g, ''));
+
+  // Xử lý số âm dạng (100.000) hoặc -100.000
+  const isNegative = s.startsWith('-') || /^\(.*\)$/.test(s);
+
+  // Loại bỏ các ký tự không phải số, dấu chấm, dấu phẩy (bao gồm chữ đ, VND, khoảng trắng...)
+  s = s.replace(/[^0-9.,]/g, '');
+  if (!s) return null;
+
+  const dotCount = (s.match(/\./g) || []).length;
+  const commaCount = (s.match(/,/g) || []).length;
+
+  let normalized = s;
+
+  if (dotCount > 0 && commaCount > 0) {
+    // Có cả chấm và phẩy: dấu xuất hiện sau cùng là phần thập phân
+    const lastDot = s.lastIndexOf('.');
+    const lastComma = s.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      // e.g. 1.234.567,89 -> chấm là hàng nghìn, phẩy là thập phân
+      normalized = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // e.g. 1,234,567.89 -> phẩy là hàng nghìn, chấm là thập phân
+      normalized = s.replace(/,/g, '');
+    }
+  } else if (dotCount > 1) {
+    // Nhiều dấu chấm: e.g. "1.234.567" -> phân cách hàng nghìn tiếng Việt
+    normalized = s.replace(/\./g, '');
+  } else if (commaCount > 1) {
+    // Nhiều dấu phẩy: e.g. "1,234,567" -> phân cách hàng nghìn tiếng Anh
+    normalized = s.replace(/,/g, '');
+  } else if (dotCount === 1 && commaCount === 0) {
+    // 1 dấu chấm, không có phẩy: "150.000" (hàng nghìn) vs "150.5" (thập phân)
+    if (/\.\d{3}$/.test(s)) {
+      normalized = s.replace('.', '');
+    } else {
+      normalized = s;
+    }
+  } else if (commaCount === 1 && dotCount === 0) {
+    // 1 dấu phẩy, không có chấm: "150,000" (hàng nghìn) vs "150,5" (thập phân)
+    if (/,\d{3}$/.test(s)) {
+      normalized = s.replace(',', '');
+    } else {
+      normalized = s.replace(',', '.');
+    }
+  }
+
+  const num = parseFloat(normalized);
   if (isNaN(num)) return null;
-  return num;
+  return isNegative ? -Math.abs(num) : num;
 }
+
 
 export function transformExcelRows(
   rows: RawExcelRow[],

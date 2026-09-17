@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { calculateFileHash } from '@/lib/file-hash';
-import { findUploadByHash, saveUploadRecord, saveReportItems, getUploads, getJobcardMap } from '@/lib/db-storage';
+import { findUploadByHash, saveUploadRecord, saveReportItems, getUploads, getJobcardMap, getUserSheetUrl } from '@/lib/db-storage';
 import { forwardImportToN8n } from '@/lib/n8n-client';
 import { transformExcelRows, RawExcelRow } from '@/lib/business-rules';
-import { readExcelBuffer, fixZip64Buffer } from '@/lib/excel-parser';
+import { readExcelBuffer, fixZip64Buffer, MAX_EXCEL_ROWS } from '@/lib/excel-parser';
 import * as XLSX from 'xlsx';
 import { randomUUID } from 'crypto';
+import { handleApiError } from '@/lib/api-errors';
+
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -74,10 +76,27 @@ export async function POST(req: NextRequest) {
       const sheetName = workbook.SheetNames[0];
       localRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
     } catch (parseErr: any) {
-      return NextResponse.json({ success: false, error: 'Không thể đọc cấu trúc file Excel: ' + parseErr.message }, { status: 400 });
+      console.error('[Upload excel read error]:', parseErr);
+      const isSafe = typeof parseErr?.message === 'string' && (
+        parseErr.message.includes('giới hạn an toàn') ||
+        parseErr.message.includes('quá nhiều phần tử') ||
+        parseErr.message.includes('Zip Bomb')
+      );
+      const clientErr = isSafe
+        ? parseErr.message
+        : 'Không thể đọc cấu trúc file Excel. Vui lòng kiểm tra lại định dạng file .xlsx.';
+      return NextResponse.json({ success: false, error: clientErr }, { status: 400 });
     }
 
-    const jobcardMap = getJobcardMap();
+    if (localRows.length > MAX_EXCEL_ROWS) {
+      return NextResponse.json({
+        success: false,
+        error: `Số lượng dòng trong file Excel (${localRows.length}) vượt quá giới hạn an toàn (${MAX_EXCEL_ROWS.toLocaleString()} dòng).`
+      }, { status: 400 });
+    }
+
+
+    const jobcardMap = getJobcardMap(session.centerCode);
     const transformResult = transformExcelRows(localRows, session.centerCode, session.centerName, jobcardMap);
     if (!transformResult.success) {
       return NextResponse.json({
@@ -99,7 +118,8 @@ export async function POST(req: NextRequest) {
       : { inserted: 0, updated: 0 };
 
     // 5. Đồng bộ n8n chỉ khi file có dữ liệu linh kiện hợp lệ.
-    const clientSheetUrl = String(formData.get('sheet_url') || formData.get('sheetUrl') || '').trim();
+    const userConfiguredSheetUrl = getUserSheetUrl(session.centerCode);
+    const clientSheetUrl = String(formData.get('sheet_url') || formData.get('sheetUrl') || userConfiguredSheetUrl || '').trim();
     let n8nStatus: 'SYNCED_N8N' | 'FAILED_N8N' | 'NOT_ATTEMPTED_NO_DATA' = 'NOT_ATTEMPTED_NO_DATA';
     let n8nError: string | null = null;
     if (transformResult.validRows > 0) {
@@ -118,12 +138,22 @@ export async function POST(req: NextRequest) {
           n8nStatus = 'SYNCED_N8N';
         } else {
           n8nStatus = 'FAILED_N8N';
-          n8nError = n8nRes.error || 'n8n không xác nhận đồng bộ thành công.';
+          n8nError = 'Quy trình n8n báo lỗi khi đồng bộ dữ liệu.';
         }
       } catch (n8nErr: any) {
+        console.error('[Upload n8n error]:', n8nErr);
         n8nStatus = 'FAILED_N8N';
-        n8nError = n8nErr.message || 'Không thể kết nối tới n8n.';
+        n8nError = 'Không thể kết nối tới dịch vụ đồng bộ n8n.';
       }
+    }
+
+    let uploadStatus: 'SUCCESS' | 'LOCAL_ONLY' | 'NO_DATA' | 'FAILED' = 'SUCCESS';
+    if (transformResult.validRows === 0) {
+      uploadStatus = 'NO_DATA';
+    } else if (n8nStatus === 'FAILED_N8N') {
+      uploadStatus = 'LOCAL_ONLY';
+    } else {
+      uploadStatus = 'SUCCESS';
     }
 
     saveUploadRecord({
@@ -135,10 +165,8 @@ export async function POST(req: NextRequest) {
       inputRows: transformResult.inputRows,
       validRows: transformResult.validRows,
       warningRows: transformResult.warningRows,
-      status: transformResult.validRows === 0
-        ? 'NO_DATA'
-        : 'SUCCESS',
-      errorMessage: undefined
+      status: uploadStatus,
+      errorMessage: n8nError || undefined
     });
 
     let zeroNotice = null;
@@ -175,7 +203,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Lỗi xử lý file tải lên. Vui lòng kiểm tra lại file Excel.');
   }
 }
 
@@ -192,6 +220,7 @@ export async function GET(req: NextRequest) {
       uploads
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Không thể tải lịch sử upload. Vui lòng thử lại sau.');
   }
 }
+

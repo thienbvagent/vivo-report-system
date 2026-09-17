@@ -141,3 +141,58 @@ test('giao dịch ACID bảo vệ tính toàn vẹn khi có lỗi', () => {
   assert.equal(storage.getReportItems('R4001003', 'ALL').length, 1);
   assert.equal(storage.getReportItems('R4001003', 'ALL')[0]['Số phiếu sửa chữa'], 'TICKET-VALID');
 });
+
+test('bảo toàn các dòng trùng mã linh kiện trong cùng phiếu sửa chữa (Issue 8)', () => {
+  // Phiếu có 2 dòng cùng mã PART-DUP (ví dụ thay 2 linh kiện cùng loại hoặc 2 dòng chi tiết)
+  const item1 = item('TICKET-DUP', 'PART-DUP', '2026-09-15 10:00:00', 250);
+  item1['Upload ID'] = 'UPL-DUP-1';
+  const item2 = item('TICKET-DUP', 'PART-DUP', '2026-09-15 10:00:00', 350);
+  item2['Upload ID'] = 'UPL-DUP-1';
+
+  // 1. Kiểm tra lưu ở chế độ replace_center không bị lỗi UNIQUE constraint
+  const replaceRes = storage.saveReportItems([item1, item2], 'replace_center');
+  assert.equal(replaceRes.inserted, 2);
+
+  let rows = storage.getReportItems('R4001003', '2026-09-15');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]['Đơn giá'], 250);
+  assert.equal(rows[1]['Đơn giá'], 350);
+
+  // 2. Kiểm tra lưu ở chế độ upsert không bị nuốt mất dòng
+  const upsertRes = storage.saveReportItems([item1, item2], 'upsert');
+  assert.equal(upsertRes.inserted, 0);
+  assert.equal(upsertRes.updated, 2);
+
+  rows = storage.getReportItems('R4001003', '2026-09-15');
+  assert.equal(rows.length, 2);
+
+  // 3. Kiểm tra getReportItemsByUploadId
+  const byUpload = storage.getReportItemsByUploadId('R4001003', 'UPL-DUP-1');
+  assert.equal(byUpload.length, 2);
+
+  const byUploadEmpty = storage.getReportItemsByUploadId('R4001003', 'UPL-NONEXISTENT');
+  assert.equal(byUploadEmpty.length, 0);
+});
+
+test('portal_jobcards: composite PK ngăn chặn 2 TTBH có cùng mã Bill ghi đè nhau (Issue 1)', () => {
+  const sharedBill = 'SHARED_BILL_001';
+
+  // TTBH 1 lưu Jobcard cho sharedBill
+  storage.savePortalJobcards([
+    { billCode: sharedBill, jobcardCode: 'JC_TTBH_CANTHO' }
+  ], 'R4001003');
+
+  // TTBH 2 cũng có sharedBill với mã Jobcard khác
+  storage.savePortalJobcards([
+    { billCode: sharedBill, jobcardCode: 'JC_TTBH_SAIGON' }
+  ], 'R4001008');
+
+  // Kiểm tra TTBH 1 nhận đúng Jobcard của mình, không bị TTBH 2 đè
+  const map1 = storage.getJobcardMap('R4001003');
+  assert.equal(map1.get(sharedBill), 'JC_TTBH_CANTHO');
+
+  // Kiểm tra TTBH 2 nhận đúng Jobcard của mình
+  const map2 = storage.getJobcardMap('R4001008');
+  assert.equal(map2.get(sharedBill), 'JC_TTBH_SAIGON');
+});
+

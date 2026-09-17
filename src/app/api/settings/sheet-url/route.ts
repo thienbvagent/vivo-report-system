@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { updateUserSheetUrl } from '@/lib/db-storage';
+import { handleApiError } from '@/lib/api-errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
       sheetUrl: cleanUrl
     });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleApiError(err, 'Không thể cập nhật cấu hình Google Sheet.');
   }
 }
+

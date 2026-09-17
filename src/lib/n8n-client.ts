@@ -1,3 +1,5 @@
+import { SafeClientError } from './api-errors';
+
 export interface N8nImportResponse {
   success: boolean;
   error?: string;
@@ -18,7 +20,7 @@ export interface N8nImportResponse {
 function getRequiredEnv(key: string): string {
   const val = process.env[key];
   if (!val || !val.trim()) {
-    throw new Error(`Cấu hình hệ thống thiếu biến môi trường bắt buộc: ${key}. Vui lòng kiểm tra file .env.local hoặc biến môi trường VPS.`);
+    throw new SafeClientError(`Cấu hình hệ thống thiếu biến môi trường bắt buộc: ${key}. Vui lòng kiểm tra lại cấu hình VPS.`, 500);
   }
   return val.trim();
 }
@@ -37,6 +39,10 @@ export async function forwardImportToN8n(
   const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
 
   const effectiveSheetUrl = (sheetUrl || process.env.DEFAULT_GOOGLE_SHEET_URL || '').trim();
+  const effectiveSpreadsheetId = (() => {
+    const m = effectiveSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return m ? m[1] : effectiveSheetUrl;
+  })().trim();
 
   const formData = new FormData();
   formData.append('file', new Blob([new Uint8Array(fileBuffer)]), fileName);
@@ -47,6 +53,10 @@ export async function forwardImportToN8n(
   if (effectiveSheetUrl) {
     formData.append('sheet_url', effectiveSheetUrl);
     formData.append('sheetUrl', effectiveSheetUrl);
+  }
+  if (effectiveSpreadsheetId) {
+    formData.append('spreadsheet_id', effectiveSpreadsheetId);
+    formData.append('spreadsheetId', effectiveSpreadsheetId);
   }
   if (items && items.length > 0) {
     formData.append('items_json', JSON.stringify(items));
@@ -63,40 +73,68 @@ export async function forwardImportToN8n(
 
     if (!res.ok) {
       const errorText = await res.text();
+      console.error(`[n8n webhook error (${res.status})]:`, errorText);
       return {
         success: false,
-        error: `n8n webhook error (${res.status}): ${errorText.substring(0, 300)}`
+        error: 'Quy trình n8n báo lỗi khi tiếp nhận dữ liệu.'
       };
     }
 
     const data = await res.json();
     return data;
   } catch (err: any) {
+    console.error(`[n8n forwardImport connection error]:`, err);
     return {
       success: false,
-      error: `Không thể kết nối tới n8n VPS (${webhookUrl}): ${err.message}`
+      error: 'Không thể kết nối tới dịch vụ đồng bộ n8n.'
     };
   }
 }
 
-export async function queryDataFromN8n(centerCode: string, reportDate: string) {
+export async function queryDataFromN8n(
+  centerCode: string,
+  reportDate: string,
+  sheetUrl?: string,
+  spreadsheetId?: string
+) {
   const webhookUrl = getRequiredEnv('N8N_QUERY_WEBHOOK_URL');
   const secret = getRequiredEnv('N8N_WEBHOOK_SECRET');
 
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Workflow-Secret': secret
-    },
-    body: JSON.stringify({ center_code: centerCode, report_date: reportDate })
-  });
+  const effectiveSheetUrl = (sheetUrl || process.env.DEFAULT_GOOGLE_SHEET_URL || '').trim();
+  const effectiveSpreadsheetId = (spreadsheetId || (() => {
+    const m = effectiveSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return m ? m[1] : effectiveSheetUrl;
+  })()).trim();
 
-  if (!res.ok) {
-    throw new Error(`n8n query failed: ${await res.text()}`);
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workflow-Secret': secret
+      },
+      body: JSON.stringify({ 
+        center_code: centerCode, 
+        report_date: reportDate,
+        sheet_url: effectiveSheetUrl,
+        sheetUrl: effectiveSheetUrl,
+        spreadsheet_id: effectiveSpreadsheetId,
+        spreadsheetId: effectiveSpreadsheetId
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[n8n query failed (${res.status})]:`, errText);
+      throw new SafeClientError('Truy vấn dữ liệu từ dịch vụ n8n không thành công.', 502);
+    }
+
+    return res.json();
+  } catch (err: any) {
+    if (err instanceof SafeClientError) throw err;
+    console.error('[n8n query error]:', err);
+    throw new SafeClientError('Không thể kết nối tới dịch vụ n8n.', 502);
   }
-
-  return res.json();
 }
 
 export async function exportBaoCaoToN8n(
@@ -123,28 +161,36 @@ export async function exportBaoCaoToN8n(
     return m ? m[1] : effectiveSheetUrl;
   })()).trim();
 
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Workflow-Secret': secret
-    },
-    body: JSON.stringify({ 
-      center_code: centerCode, 
-      report_date: reportDate,
-      sheet_url: effectiveSheetUrl,
-      sheetUrl: effectiveSheetUrl,
-      spreadsheet_id: effectiveSpreadsheetId,
-      spreadsheetId: effectiveSpreadsheetId,
-      targetSheet: sheetName,
-      target_sheet: sheetName,
-      items: items || []
-    })
-  });
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workflow-Secret': secret
+      },
+      body: JSON.stringify({ 
+        center_code: centerCode, 
+        report_date: reportDate,
+        sheet_url: effectiveSheetUrl,
+        sheetUrl: effectiveSheetUrl,
+        spreadsheet_id: effectiveSpreadsheetId,
+        spreadsheetId: effectiveSpreadsheetId,
+        targetSheet: sheetName,
+        target_sheet: sheetName,
+        items: items || []
+      })
+    });
 
-  if (!res.ok) {
-    throw new Error(`n8n export failed: ${await res.text()}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[n8n export failed (${res.status})]:`, errText);
+      throw new SafeClientError('Xuất báo cáo sang Google Sheets qua n8n thất bại.', 502);
+    }
+
+    return res.json();
+  } catch (err: any) {
+    if (err instanceof SafeClientError) throw err;
+    console.error('[n8n export error]:', err);
+    throw new SafeClientError('Không thể kết nối tới dịch vụ xuất n8n.', 502);
   }
-
-  return res.json();
 }

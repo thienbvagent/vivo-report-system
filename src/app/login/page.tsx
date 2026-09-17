@@ -34,7 +34,8 @@ export default function LoginPage() {
       router.push('/dashboard');
       router.refresh();
     } catch (err: any) {
-      setError('Lỗi kết nối: ' + err.message);
+      console.error('[Login network error]:', err);
+      setError('Lỗi kết nối mạng: Không thể kết nối tới máy chủ.');
       setLoading(false);
     }
   };

@@ -12,7 +12,8 @@ export async function GET() {
     authenticated: true,
     user: {
       ...session,
-      googleSheetUrl: user?.googleSheetUrl || ''
+      googleSheetUrl: user?.googleSheetUrl || '',
+      mustChangePassword: Boolean(user?.mustChangePassword)
     }
   });
 }

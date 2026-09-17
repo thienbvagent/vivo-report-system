@@ -44,8 +44,17 @@ export default function DashboardPage() {
     const key = `vivo_google_sheet_url_${user.centerCode}`;
     const localVal = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
     const serverVal = (user as any).googleSheetUrl || '';
-    const activeUrl = localVal !== null ? localVal : serverVal;
+    const activeUrl = serverVal || localVal || '';
     setGoogleSheetUrl(activeUrl);
+
+    // Nếu localStorage có nhưng server DB chưa lưu -> lập tức đồng bộ lên server
+    if (localVal && !serverVal) {
+      fetch('/api/settings/sheet-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: localVal })
+      }).catch(() => {});
+    }
   }, [user]);
 
   const handleSheetUrlChange = (val: string) => {
@@ -149,7 +158,8 @@ export default function DashboardPage() {
         alert('Lỗi: ' + data.error);
       }
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      console.error('[Reset center data error]:', err);
+      alert('Lỗi kết nối mạng khi làm mới dữ liệu. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
@@ -168,6 +178,15 @@ export default function DashboardPage() {
 
     setExporting(true);
     setExportNotice(null);
+
+    // Luôn đảm bảo server đã lưu cấu hình Google Sheet mới nhất của TTBH
+    try {
+      await fetch('/api/settings/sheet-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: googleSheetUrl.trim() })
+      });
+    } catch {}
 
     // Chuẩn bị các cột dữ liệu theo đúng chuẩn bảng tính Google Sheet của bạn
     const exportItems = rows.map(r => {
@@ -244,9 +263,10 @@ export default function DashboardPage() {
         });
       }
     } catch (err: any) {
+      console.error('[Export Google Sheets network error]:', err);
       setExportNotice({
         type: 'error',
-        message: 'Lỗi mạng khi gọi export: ' + err.message
+        message: 'Lỗi kết nối mạng khi xuất sang Google Sheets. Vui lòng thử lại sau.'
       });
     } finally {
       setExporting(false);

@@ -1,40 +1,98 @@
-# Nginx Reverse Proxy Configuration cho Web Tool Báo Cáo Vivo
-# Đặt cấu hình này vào /etc/nginx/sites-available/vivo-report.conf
-# Và symlink sang /etc/nginx/sites-enabled/
+# ==============================================================================
+# Nginx Reverse Proxy Configuration - Vivo Report System
+# File: /etc/nginx/sites-available/vivo-report.conf
+# Symlink: ln -s /etc/nginx/sites-available/vivo-report.conf /etc/nginx/sites-enabled/
+# Domain: vivo.pdarc.space
+# ==============================================================================
 
+# ------------------------------------------------------------------------------
+# 1. CẤU HÌNH HTTP (PORT 80)
+# Hoạt động ngay lập tức không cần chứng chỉ SSL ban đầu.
+# Cho phép ứng dụng hoạt động ngay và hỗ trợ cấp chứng chỉ Certbot Let's Encrypt.
+# ------------------------------------------------------------------------------
 server {
     listen 80;
-    server_name vivo-report.yourdomain.com; # Thay thế bằng domain của bạn
+    listen [::]:80;
+    server_name vivo.pdarc.space;
 
-    # Tự động redirect sang HTTPS
-    return 301 https://$host$request_uri;
-}
+    # Cho phép Certbot xác thực qua Webroot ACME Challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
 
-server {
-    listen 443 ssl http2;
-    server_name vivo-report.yourdomain.com; # Thay thế bằng domain của bạn
+    # Giới hạn kích thước file upload Excel
+    client_max_body_size 50M;
 
-    # Cấu hình chứng chỉ SSL (Let's Encrypt / Certbot)
-    # ssl_certificate /etc/letsencrypt/live/vivo-report.yourdomain.com/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/vivo-report.yourdomain.com/privkey.pem;
-
-    client_max_body_size 50M; # Cho phép upload file Excel dung lượng lớn
-
+    # Chuyển tiếp tới Next.js container chạy tại 127.0.0.1:3000
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
+
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
 
+        # Chống giả mạo IP: X-Real-IP lấy chính xác từ địa chỉ IP kết nối của client
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Timeout cho việc upload và xử lý file lớn
+        # Timeout xử lý file Excel lớn và đồng bộ n8n
         proxy_connect_timeout 120s;
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
     }
 }
+
+# ------------------------------------------------------------------------------
+# 2. HƯỚNG DẪN BẬT HTTPS TỰ ĐỘNG BẰNG CERTBOT (1 LỆNH DUY NHẤT):
+# Sau khi lưu file và kích hoạt cấu hình, chạy lệnh:
+#   sudo certbot --nginx -d vivo.pdarc.space
+#
+# Certbot sẽ tự động cấp chứng chỉ miễn phí từ Let's Encrypt và cấu hình
+# tự động redirect toàn bộ HTTP sang HTTPS an toàn.
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# 3. CẤU HÌNH HTTPS MẪU ĐÃ CÓ CHỨNG CHỈ (Bỏ comment sau khi đã có file certificate)
+# ------------------------------------------------------------------------------
+# server {
+#     listen 443 ssl http2;
+#     listen [::]:443 ssl http2;
+#     server_name vivo.pdarc.space;
+#
+#     # Chứng chỉ Let's Encrypt
+#     ssl_certificate /etc/letsencrypt/live/vivo.pdarc.space/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/vivo.pdarc.space/privkey.pem;
+#
+#     # SSL Hardening & Modern Ciphers
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+#     ssl_prefer_server_ciphers off;
+#     ssl_session_timeout 1d;
+#     ssl_session_cache shared:SSL:10m;
+#     ssl_session_tickets off;
+#
+#     client_max_body_size 50M;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:3000;
+#         proxy_http_version 1.1;
+#
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host $host;
+#         proxy_cache_bypass $http_upgrade;
+#
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto https;
+#
+#         proxy_connect_timeout 120s;
+#         proxy_send_timeout 120s;
+#         proxy_read_timeout 120s;
+#     }
+# }
+

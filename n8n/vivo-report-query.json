@@ -42,7 +42,7 @@
         "operation": "read",
         "documentId": {
           "__rl": true,
-          "value": "={{ $env.GOOGLE_SPREADSHEET_ID }}",
+          "value": "={{ $('Webhook').first().json.body?.spreadsheet_id || $('Webhook').first().json.body?.spreadsheetId || ($('Webhook').first().json.body?.sheet_url ? $('Webhook').first().json.body.sheet_url.match(/\\/spreadsheets\\/d\\/([a-zA-Z0-9-_]+)/)?.[1] : null) || $env.GOOGLE_SPREADSHEET_ID }}",
           "mode": "id"
         },
         "sheetName": {

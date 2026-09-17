@@ -10,13 +10,14 @@ interface NavbarProps {
   user: {
     centerCode: string;
     centerName: string;
+    mustChangePassword?: boolean;
   };
 }
 
 export default function Navbar({ user }: NavbarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(Boolean(user?.mustChangePassword));
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -26,6 +27,21 @@ export default function Navbar({ user }: NavbarProps) {
 
   return (
     <>
+      {user?.mustChangePassword && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-2">
+            <span>⚠️</span>
+            <span>Cảnh báo an ninh: TTBH đang sử dụng mật khẩu khởi tạo mặc định. Vui lòng đổi mật khẩu mới để bảo mật dữ liệu.</span>
+          </div>
+          <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="px-3 py-1 bg-slate-900 text-white hover:bg-slate-800 rounded-md text-xs transition ml-2"
+          >
+            Đổi Mật Khẩu Ngay
+          </button>
+        </div>
+      )}
+
       <header className="bg-slate-900 text-white shadow-md sticky top-0 z-50">
         <div className="w-full max-w-[99%] xl:max-w-[98%] 2xl:max-w-[97%] mx-auto px-3 sm:px-5">
           <div className="flex justify-between h-16 items-center">
