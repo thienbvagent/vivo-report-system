@@ -12,19 +12,20 @@ vivo-report-system/
 ├── n8n/
 │   ├── vivo-report-import.json    # Workflow n8n: Nhận file, lọc, ghi vào tab DATA
 │   ├── vivo-report-query.json     # Workflow n8n: Truy vấn dữ liệu theo ngày cho Dashboard
-│   └── vivo-report-export.json    # Workflow n8n: Xuất 15 cột chuẩn sang tab BaoCao
+│   └── vivo-report-export.json    # Workflow n8n: Xuất 17 cột chuẩn sang tab BaoCao
 ├── src/
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── auth/              # Login, Logout, Me API
 │   │   │   ├── uploads/           # Upload Excel, check SHA-256 hash, forward n8n
 │   │   │   ├── reports/           # Query báo cáo theo ngày
-│   │   │   └── export/            # Export sang tab BaoCao
+│   │   │   ├── export/            # Export sang tab BaoCao & tải Excel
+│   │   │   └── sync-retry/        # Đồng bộ lại n8n / Google Sheets
 │   │   ├── login/                 # Giao diện Đăng nhập TTBH
 │   │   ├── dashboard/             # Giao diện Dashboard lọc ngày & xuất báo cáo
 │   │   └── uploads/               # Giao diện Tải lên file Excel
 │   ├── components/                # Navbar, SummaryCards, DataTable
-│   └── lib/                       # business-rules, auth, centers, file-hash, n8n-client
+│   └── lib/                       # business-rules, auth, centers, db-storage, n8n-client
 ├── tests/
 │   ├── business-rules.test.ts     # Test quy tắc nghiệp vụ và file Excel thực tế
 │   └── db-storage.test.ts         # Test upload file A → file B, upsert và ghi đè
@@ -39,7 +40,7 @@ vivo-report-system/
 
 ### Bước 1: Mở n8n và Import file
 1. Đăng nhập vào n8n của bạn tại: `https://n8n.pdarc.space/`
-2. Vào mục **Workflows** $ightarrow$ bấm **Import from File...**
+2. Vào mục **Workflows** → bấm **Import from File...**
 3. Import lần lượt 3 file trong thư mục `n8n/`:
    * `n8n/vivo-report-import.json` (Tên: *Vivo Report - Import Excel*)
    * `n8n/vivo-report-query.json` (Tên: *Vivo Report - Query DATA*)
@@ -50,8 +51,8 @@ vivo-report-system/
    * Chọn **Credential**: Sử dụng tài khoản Google Sheets Credential đã có sẵn trên n8n của bạn.
    * Nhập **Spreadsheet ID**: ID bảng tính Google Sheet của bạn (lấy từ URL Google Sheet).
 2. Kiểm tra tên Range của các sheet:
-   * Tab `DATA`: Range `DATA!A:T`
-   * Tab `BaoCao`: Range `BaoCao!A:O`
+   * Tab `DATA`: Range `DATA!A:Z` (26 cột)
+   * Tab `BaoCao`: Range `BaoCao!A:Q` (17 cột)
 3. Bật công tắc **Active** (gạt sang Active) cho cả 3 workflow để kích hoạt Production Webhook.
 
 ---
@@ -61,15 +62,15 @@ vivo-report-system/
 Trên Google Spreadsheet của bạn, tạo sẵn 3 Tab sau:
 
 ### Tab 1: `DATA` (Lưu toàn bộ lịch sử)
-Đặt tiêu đề ở dòng 1 gồm 20 cột:
+Đặt tiêu đề ở dòng 1 gồm 26 cột (25 cột dữ liệu + 1 cột Khóa cập nhật dùng cho Upsert):
 ```
-Mã TTBH | Tên TTBH | Ngày báo cáo | Thời gian lấy máy | Số phiếu sửa chữa | Mã vật tư linh kiện | Tên vật tư | Đơn giá | Doanh thu tiền mặt | Công nợ | Khách hàng | Phương thức thanh toán | Xuất Bảo Hành | Xuất Sửa Chữa | Loại hình đem đến sửa | Loại hình sửa chữa | Loại linh kiện | Phương án giải quyết | Upload ID | Source Row Number
+Mã TTBH | Tên TTBH | Ngày báo cáo | Thời gian lấy máy | Số phiếu sửa chữa | Mã vật tư linh kiện | Tên vật tư | Xuất Bảo Hành | Xuất phụ kiện | Xuất Sửa Chữa | Đơn giá | Doanh thu tiền mặt | Doanh thu tiền mặt trước thuế | Công nợ | CN sau chiết khấu | CN trước thuế | Khách hàng | Phương thức thanh toán | Jobcard | Loại hình đem đến sửa | Loại hình sửa chữa | Loại linh kiện | Phương án giải quyết | Upload ID | Source Row Number | Khóa cập nhật
 ```
 
-### Tab 2: `BaoCao` (Xuất báo cáo theo ngày đã chọn)
-Đặt tiêu đề ở dòng 1 gồm đúng 15 cột:
+### Tab 2: `BaoCao` (Xuất báo cáo theo ngày đã chọn hoặc theo tháng)
+Đặt tiêu đề ở dòng 1 gồm đúng 17 cột:
 ```
-Ngày | Số phiếu sửa chữa | Mã vật tư linh kiện | Tên vật tư | Xuất Bảo Hành | Xuất Sửa Chữa | Đơn giá | Doanh thu tiền mặt | Doanh thu tiền mặt trước thuế | Công nợ | CN sau chiết khấu | CN trước thuế | Khách hàng | Phương thức thanh toán | TTBH
+Ngày | Số phiếu sửa chữa | Mã vật tư linh kiện | Tên vật tư | Xuất Bảo Hành | Xuất phụ kiện | Xuất Sửa Chữa | Đơn giá | Doanh thu tiền mặt | Doanh thu tiền mặt trước thuế | Công nợ | CN sau chiết khấu | CN trước thuế | Khách hàng | Phương thức thanh toán | Jobcard | TTBH
 ```
 
 ### Tab 3: `UPLOADS` (Chống trùng file)
@@ -126,7 +127,7 @@ Mở trình duyệt truy cập: `http://localhost:3000`
 6. Bấm **Xem Báo Cáo**:
    * Dashboard hiển thị tổng số dòng, tiền mặt, công nợ.
    * Dropdown lọc theo ngày: chọn ngày cụ thể (ví dụ `2026-08-13`) hoặc `Tất cả các ngày`.
-   * Bấm **Xuất Google Sheets (BaoCao)**: Dữ liệu 15 cột của ngày đó được ghi vào đúng Spreadsheet ID người dùng nhập.
+   * Bấm **Xuất Google Sheets (BaoCao)**: Dữ liệu 17 cột của ngày đó được ghi vào đúng Spreadsheet ID người dùng nhập.
 
 ---
 

@@ -7,7 +7,7 @@
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/server.js",
-    "test": "node --import tsx --test tests/business-rules.test.ts tests/db-storage.test.ts tests/auth-security.test.ts tests/portal-jobcard.test.ts tests/export-tantam.test.ts"
+    "test": "node --import tsx --test tests/business-rules.test.ts tests/db-storage.test.ts tests/auth-security.test.ts tests/portal-jobcard.test.ts tests/export-tantam.test.ts tests/sync-retry.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

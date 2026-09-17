@@ -106,14 +106,22 @@ jobs:
 
             echo "Performing health check..."
             sleep 3
+            HEALTHY=false
             for i in $(seq 1 10); do
               if curl -s http://127.0.0.1:3000/login | grep -q "vivo" 2>/dev/null; then
                 echo "Health check passed!"
+                HEALTHY=true
                 break
               fi
               echo "Waiting for app to be ready ($i/10)..."
               sleep 2
             done
+
+            if [ "$HEALTHY" != "true" ]; then
+              echo "Health check failed after 10 attempts!"
+              docker compose logs --tail=50
+              exit 1
+            fi
 
             echo "Container status:"
             docker compose ps

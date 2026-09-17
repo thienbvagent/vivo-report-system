@@ -107,7 +107,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: true, exportedRows: $('Validate and Map 15 Columns').all().length, targetSheet: 'BaoCao', spreadsheetId: $('Webhook').first().json.body.spreadsheet_id, center_code: $('Webhook').first().json.body.center_code, report_date: $('Webhook').first().json.body.report_date }) }}"
+        "responseBody": "={{ JSON.stringify({ success: true, exportedRows: $('Validate and Map 17 Columns').all().length, targetSheet: $('Webhook').first().json.body?.targetSheet || $('Webhook').first().json.body?.target_sheet || 'BaoCao', spreadsheetId: $('Webhook').first().json.body.spreadsheet_id, center_code: $('Webhook').first().json.body.center_code, report_date: $('Webhook').first().json.body.report_date }) }}"
       },
       "id": "node-respond-export",
       "name": "Respond Export Success",
@@ -134,11 +134,11 @@
     },
     "Verify Secret": {
       "main": [
-        [{"node": "Validate and Map 15 Columns", "type": "main", "index": 0}],
+        [{"node": "Validate and Map 17 Columns", "type": "main", "index": 0}],
         [{"node": "Respond Unauthorized", "type": "main", "index": 0}]
       ]
     },
-    "Validate and Map 15 Columns": {
+    "Validate and Map 17 Columns": {
       "main": [[{"node": "Clear old BaoCao data", "type": "main", "index": 0}]]
     },
     "Clear old BaoCao data": {

@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
           session.centerName,
           uploadId,
           mode === 'replace_center' ? 'replace' : 'upsert',
-          transformResult.items,
+          reportItems,
           clientSheetUrl || undefined
         );
         if (n8nRes.success) {
