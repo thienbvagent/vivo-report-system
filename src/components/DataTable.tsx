@@ -239,17 +239,17 @@ export default function DataTable({ rows }: DataTableProps) {
                     <td className="py-2.5 px-2.5 text-right font-bold text-emerald-600 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'KL'
                         ? (r['Doanh thu tiền mặt'] !== null && r['Doanh thu tiền mặt'] !== undefined ? formatCurrency(r['Doanh thu tiền mặt']) : '0')
-                        : '-'}
+                        : '0'}
                     </td>
                     <td className="py-2.5 px-2.5 text-right font-mono text-emerald-700/90 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'KL'
                         ? (r['Doanh thu tiền mặt trước thuế'] !== null && r['Doanh thu tiền mặt trước thuế'] !== undefined ? formatCurrency(r['Doanh thu tiền mặt trước thuế']) : '0')
-                        : '-'}
+                        : '0'}
                     </td>
                     <td className="py-2.5 px-2.5 text-right font-bold text-amber-600 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'TGDĐ'
                         ? (r['Công nợ'] !== null && r['Công nợ'] !== undefined ? formatCurrency(r['Công nợ']) : '0')
-                        : '-'}
+                        : '0'}
                     </td>
                     <td className="py-2.5 px-2.5 text-right font-mono text-amber-700/90 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'TGDĐ'

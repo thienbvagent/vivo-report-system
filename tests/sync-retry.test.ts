@@ -175,7 +175,14 @@ test('Sync-Retry: formats items to standard 17 columns with proper tax and debt 
     'Jobcard': ''
   };
 
+  const formatMoneyComma = (val: any): string => {
+    if (val === null || val === undefined || val === '') return '';
+    const num = typeof val === 'number' ? Math.round(val) : Math.round(Number(String(val).replace(/,/g, '')));
+    return isNaN(num) ? '' : new Intl.NumberFormat('en-US').format(num);
+  };
+
   const centerCode = 'R4001003';
+  const centerName = 'Trung tâm CSKH vivo Cần Thơ';
   const formatRow = (item: any) => {
     const isTgdd = item['Khách hàng'] === 'TGDĐ';
     return {
@@ -186,38 +193,39 @@ test('Sync-Retry: formats items to standard 17 columns with proper tax and debt 
       'Xuất Bảo Hành': item['Xuất Bảo Hành'] === 1 || item['Xuất Bảo Hành'] === '1' ? 1 : '',
       'Xuất phụ kiện': item['Xuất phụ kiện'] === 1 || item['Xuất phụ kiện'] === '1' ? 1 : '',
       'Xuất Sửa Chữa': item['Xuất Sửa Chữa'] === 1 || item['Xuất Sửa Chữa'] === '1' ? 1 : '',
-      'Đơn giá': item['Đơn giá'] === null ? '' : Math.round(Number(item['Đơn giá'])),
-      'Doanh thu tiền mặt': isTgdd || item['Doanh thu tiền mặt'] === null ? '' : Math.round(Number(item['Doanh thu tiền mặt'])),
-      'Doanh thu tiền mặt trước thuế': isTgdd || item['Doanh thu tiền mặt trước thuế'] == null ? '' : Math.round(Number(item['Doanh thu tiền mặt trước thuế'])),
-      'Công nợ': isTgdd ? Math.round(Number(item['Công nợ'] || 0)) : '',
-      'CN sau chiết khấu': isTgdd ? Math.round(Number(item['CN sau chiết khấu'] || 0)) : '',
-      'CN trước thuế': isTgdd ? Math.round(Number(item['CN trước thuế'] || 0)) : '',
+      'Đơn giá': formatMoneyComma(item['Đơn giá']),
+      'Doanh thu tiền mặt': isTgdd ? '0' : (item['Doanh thu tiền mặt'] === null || item['Doanh thu tiền mặt'] === undefined ? '' : formatMoneyComma(item['Doanh thu tiền mặt'])),
+      'Doanh thu tiền mặt trước thuế': isTgdd ? '0' : (item['Doanh thu tiền mặt trước thuế'] == null ? '' : formatMoneyComma(item['Doanh thu tiền mặt trước thuế'])),
+      'Công nợ': isTgdd ? formatMoneyComma(item['Công nợ'] ?? 0) : '0',
+      'CN sau chiết khấu': isTgdd ? formatMoneyComma(item['CN sau chiết khấu'] ?? 0) : '-',
+      'CN trước thuế': isTgdd ? formatMoneyComma(item['CN trước thuế'] ?? 0) : '-',
       'Khách hàng': item['Khách hàng'],
       'Phương thức thanh toán': item['Phương thức thanh toán'],
       'Jobcard': item['Jobcard'] || '',
-      'TTBH': centerCode
+      'TTBH': centerName
     };
   };
 
   const formattedTgdd = formatRow(tgddItem);
   assert.strictEqual(formattedTgdd['Khách hàng'], 'TGDĐ');
-  assert.strictEqual(formattedTgdd['Doanh thu tiền mặt'], '');
-  assert.strictEqual(formattedTgdd['Công nợ'], 1000000);
-  assert.strictEqual(formattedTgdd['CN sau chiết khấu'], 960000);
-  assert.strictEqual(formattedTgdd['CN trước thuế'], 888889);
+  assert.strictEqual(formattedTgdd['Doanh thu tiền mặt'], '0');
+  assert.strictEqual(formattedTgdd['Doanh thu tiền mặt trước thuế'], '0');
+  assert.strictEqual(formattedTgdd['Công nợ'], '1,000,000');
+  assert.strictEqual(formattedTgdd['CN sau chiết khấu'], '960,000');
+  assert.strictEqual(formattedTgdd['CN trước thuế'], '888,889');
   assert.strictEqual(formattedTgdd['Xuất Sửa Chữa'], 1);
   assert.strictEqual(formattedTgdd['Xuất Bảo Hành'], '');
   assert.strictEqual(formattedTgdd['Jobcard'], 'JC_12345');
-  assert.strictEqual(formattedTgdd['TTBH'], centerCode);
+  assert.strictEqual(formattedTgdd['TTBH'], centerName);
   assert.strictEqual(Object.keys(formattedTgdd).length, 17);
 
   const formattedKl = formatRow(klItem);
   assert.strictEqual(formattedKl['Khách hàng'], 'KL');
-  assert.strictEqual(formattedKl['Doanh thu tiền mặt'], 200000);
-  assert.strictEqual(formattedKl['Doanh thu tiền mặt trước thuế'], 185185);
-  assert.strictEqual(formattedKl['Công nợ'], '');
-  assert.strictEqual(formattedKl['CN sau chiết khấu'], '');
-  assert.strictEqual(formattedKl['CN trước thuế'], '');
+  assert.strictEqual(formattedKl['Doanh thu tiền mặt'], '200,000');
+  assert.strictEqual(formattedKl['Doanh thu tiền mặt trước thuế'], '185,185');
+  assert.strictEqual(formattedKl['Công nợ'], '0');
+  assert.strictEqual(formattedKl['CN sau chiết khấu'], '-');
+  assert.strictEqual(formattedKl['CN trước thuế'], '-');
   assert.strictEqual(formattedKl['Xuất phụ kiện'], 1);
   assert.strictEqual(formattedKl['Xuất Sửa Chữa'], '');
   assert.strictEqual(Object.keys(formattedKl).length, 17);

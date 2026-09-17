@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { getUploads, getReportItemsByUploadId, updateUploadStatus, getUserSheetUrl, updateUserSheetUrl, isSpreadsheetIdUsedByOtherCenter } from '@/lib/db-storage';
 import { exportBaoCaoToN8n } from '@/lib/n8n-client';
+import { getCenterName } from '@/lib/centers';
 import { handleApiError } from '@/lib/api-errors';
 
 function extractSpreadsheetId(input: unknown): string {
@@ -102,6 +103,12 @@ export async function POST(req: NextRequest) {
       let uploadOk = true;
       let lastErr = '';
 
+      const formatMoneyComma = (val: any): string => {
+        if (val === null || val === undefined || val === '') return '';
+        const num = typeof val === 'number' ? Math.round(val) : Math.round(Number(String(val).replace(/,/g, '')));
+        return isNaN(num) ? '' : new Intl.NumberFormat('en-US').format(num);
+      };
+
       for (const [monthYear, itemsForMonth] of monthMap.entries()) {
         const exportItems = itemsForMonth.map(item => {
           const isTgdd = item['Khách hàng'] === 'TGDĐ';
@@ -113,16 +120,16 @@ export async function POST(req: NextRequest) {
             'Xuất Bảo Hành': item['Xuất Bảo Hành'] === 1 || item['Xuất Bảo Hành'] === '1' ? 1 : '',
             'Xuất phụ kiện': item['Xuất phụ kiện'] === 1 || item['Xuất phụ kiện'] === '1' ? 1 : '',
             'Xuất Sửa Chữa': item['Xuất Sửa Chữa'] === 1 || item['Xuất Sửa Chữa'] === '1' ? 1 : '',
-            'Đơn giá': item['Đơn giá'] === null ? '' : Math.round(Number(item['Đơn giá'])),
-            'Doanh thu tiền mặt': isTgdd || item['Doanh thu tiền mặt'] === null ? '' : Math.round(Number(item['Doanh thu tiền mặt'])),
-            'Doanh thu tiền mặt trước thuế': isTgdd || item['Doanh thu tiền mặt trước thuế'] == null ? '' : Math.round(Number(item['Doanh thu tiền mặt trước thuế'])),
-            'Công nợ': isTgdd ? Math.round(Number(item['Công nợ'] || 0)) : '',
-            'CN sau chiết khấu': isTgdd ? Math.round(Number(item['CN sau chiết khấu'] || 0)) : '',
-            'CN trước thuế': isTgdd ? Math.round(Number(item['CN trước thuế'] || 0)) : '',
+            'Đơn giá': formatMoneyComma(item['Đơn giá']),
+            'Doanh thu tiền mặt': isTgdd ? '0' : (item['Doanh thu tiền mặt'] === null || item['Doanh thu tiền mặt'] === undefined ? '' : formatMoneyComma(item['Doanh thu tiền mặt'])),
+            'Doanh thu tiền mặt trước thuế': isTgdd ? '0' : (item['Doanh thu tiền mặt trước thuế'] == null ? '' : formatMoneyComma(item['Doanh thu tiền mặt trước thuế'])),
+            'Công nợ': isTgdd ? formatMoneyComma(item['Công nợ'] ?? 0) : '0',
+            'CN sau chiết khấu': isTgdd ? formatMoneyComma(item['CN sau chiết khấu'] ?? 0) : '-',
+            'CN trước thuế': isTgdd ? formatMoneyComma(item['CN trước thuế'] ?? 0) : '-',
             'Khách hàng': item['Khách hàng'],
             'Phương thức thanh toán': item['Phương thức thanh toán'],
             'Jobcard': item['Jobcard'] || '',
-            'TTBH': session.centerCode
+            'TTBH': session.centerName || getCenterName(session.centerCode)
           };
         });
 

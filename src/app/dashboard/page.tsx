@@ -188,6 +188,13 @@ export default function DashboardPage() {
       });
     } catch {}
 
+    // Hàm định dạng số tiền có dấu phẩy ngăn cách hàng nghìn (ví dụ: 1,342,000)
+    const formatMoneyComma = (val: any): string => {
+      if (val === null || val === undefined || val === '') return '';
+      const num = typeof val === 'number' ? Math.round(val) : Math.round(Number(String(val).replace(/,/g, '')));
+      return isNaN(num) ? '' : new Intl.NumberFormat('en-US').format(num);
+    };
+
     // Chuẩn bị các cột dữ liệu theo đúng chuẩn bảng tính Google Sheet của bạn
     const exportItems = rows.map(r => {
       const isTgdd = r['Khách hàng'] === 'TGDĐ';
@@ -195,21 +202,21 @@ export default function DashboardPage() {
       const isSc = r['Xuất Sửa Chữa'] === 1 || r['Xuất Sửa Chữa'] === '1' ? 1 : '';
 
       const cash = !isTgdd && r['Doanh thu tiền mặt'] !== null && r['Doanh thu tiền mặt'] !== undefined 
-        ? Math.round(Number(r['Doanh thu tiền mặt'])) 
-        : '';
+        ? formatMoneyComma(r['Doanh thu tiền mặt']) 
+        : (isTgdd ? '0' : '');
       const cashBeforeTax = !isTgdd && r['Doanh thu tiền mặt trước thuế'] !== null && r['Doanh thu tiền mặt trước thuế'] !== undefined 
-        ? Math.round(Number(r['Doanh thu tiền mặt trước thuế'])) 
-        : '';
+        ? formatMoneyComma(r['Doanh thu tiền mặt trước thuế']) 
+        : (isTgdd ? '0' : '');
 
       const debt = isTgdd 
-        ? (r['Công nợ'] !== null && r['Công nợ'] !== undefined ? Math.round(Number(r['Công nợ'])) : 0) 
-        : '';
+        ? formatMoneyComma(r['Công nợ'] ?? 0) 
+        : '0';
       const debtAfterDiscount = isTgdd 
-        ? (r['CN sau chiết khấu'] !== null && r['CN sau chiết khấu'] !== undefined ? Math.round(Number(r['CN sau chiết khấu'])) : 0) 
-        : '';
+        ? formatMoneyComma(r['CN sau chiết khấu'] ?? 0) 
+        : '-';
       const debtBeforeTax = isTgdd 
-        ? (r['CN trước thuế'] !== null && r['CN trước thuế'] !== undefined ? Math.round(Number(r['CN trước thuế'])) : 0) 
-        : '';
+        ? formatMoneyComma(r['CN trước thuế'] ?? 0) 
+        : '-';
 
       return {
         'Ngày': r['Ngày báo cáo'] || selectedDate || new Date().toISOString().slice(0, 10),
@@ -218,7 +225,7 @@ export default function DashboardPage() {
         'Tên vật tư': r['Tên vật tư'] || '',
         'Xuất Bảo Hành': isBh,
         'Xuất Sửa Chữa': isSc,
-        'Đơn giá': (r['Đơn giá'] !== null && r['Đơn giá'] !== undefined) ? Math.round(Number(r['Đơn giá'])) : '',
+        'Đơn giá': (r['Đơn giá'] !== null && r['Đơn giá'] !== undefined) ? formatMoneyComma(r['Đơn giá']) : '',
         'Doanh thu tiền mặt': cash,
         'Doanh thu tiền mặt trước thuế': cashBeforeTax,
         'Công nợ': debt,
@@ -226,7 +233,8 @@ export default function DashboardPage() {
         'CN trước thuế': debtBeforeTax,
         'Khách hàng': r['Khách hàng'] || '',
         'Phương thức thanh toán': r['Phương thức thanh toán'] || '',
-        'TTBH': user?.centerCode || 'R4001003'
+        'Jobcard': r['Jobcard'] || '',
+        'TTBH': user?.centerName || user?.centerCode || 'Trung tâm CSKH vivo Cần Thơ'
       };
     });
 
