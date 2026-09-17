@@ -327,19 +327,19 @@ export default function UploadsPage() {
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Navbar user={user} />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-6">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-2.5 sm:px-6 py-4 sm:py-6">
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 mb-6 bg-white px-4 py-2 rounded-xl shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 border-b border-slate-200 mb-4 sm:mb-6 bg-white p-1.5 sm:p-2 rounded-xl shadow-sm">
           <button
             onClick={() => setActiveTab('upload')}
-            className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-bold transition ${
+            className={`flex items-center justify-center sm:justify-start space-x-2 px-3 sm:px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition min-h-[44px] ${
               activeTab === 'upload'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <UploadCloud className="w-4 h-4" />
-            <span>Tải Lên Báo Cáo Sửa Chữa (Vivo)</span>
+            <UploadCloud className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Báo Cáo Sửa Chữa (Vivo)</span>
           </button>
 
           <button
@@ -347,16 +347,16 @@ export default function UploadsPage() {
               setActiveTab('portal');
               fetchPortalStats();
             }}
-            className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-bold transition relative ${
+            className={`flex items-center justify-center sm:justify-start space-x-2 px-3 sm:px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition relative min-h-[44px] ${
               activeTab === 'portal'
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Nạp Jobcard Portal TGDĐ</span>
+            <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Jobcard Portal TGDĐ</span>
             {portalStats && portalStats.totalCount > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
+              <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ml-1 ${
                 activeTab === 'portal' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-800'
               }`}>
                 {portalStats.totalCount}
@@ -369,13 +369,13 @@ export default function UploadsPage() {
               setActiveTab('history');
               fetchHistory();
             }}
-            className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-bold transition relative ${
+            className={`flex items-center justify-center sm:justify-start space-x-2 px-3 sm:px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition relative min-h-[44px] ${
               activeTab === 'history'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-4 h-4 flex-shrink-0" />
             <span>Lịch Sử Tải Lên</span>
           </button>
         </div>
@@ -384,20 +384,20 @@ export default function UploadsPage() {
         {activeTab === 'upload' && (
           <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-200 bg-slate-50">
-                <h1 className="text-xl font-black text-slate-900 flex items-center space-x-2">
-                  <UploadCloud className="w-6 h-6 text-blue-600" />
+              <div className="p-4 sm:p-6 border-b border-slate-200 bg-slate-50">
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center space-x-2">
+                  <UploadCloud className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
                   <span>Tải Lên Báo Cáo Sửa Chữa Chi Tiết (.xlsx)</span>
                 </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  File tải lên phải thuộc trung tâm: <strong>{user.centerName} ({user.centerCode})</strong>.
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  File tải lên phải thuộc trung tâm: <strong className="text-slate-800">{user.centerName} ({user.centerCode})</strong>.
                   Hệ thống tự động lọc linh kiện phát sinh, kiểm tra Thời gian lấy máy và tính Doanh thu/Công nợ theo quy định thuế & chiết khấu.
                 </p>
               </div>
 
-              <form onSubmit={handleUpload} className="p-6 space-y-6">
+              <form onSubmit={handleUpload} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
                 {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm flex items-start space-x-3">
+                  <div className="bg-red-50 border border-red-200 text-red-700 p-3.5 sm:p-4 rounded-xl text-xs sm:text-sm flex items-start space-x-3">
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <div>
                       <div className="font-bold">Không thể import file</div>
@@ -407,7 +407,7 @@ export default function UploadsPage() {
                 )}
 
                 {/* Drag and drop zone */}
-                <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-blue-500 transition cursor-pointer bg-slate-50/50">
+                <div className="border-2 border-dashed border-slate-300 rounded-2xl p-5 sm:p-8 text-center hover:border-blue-500 transition cursor-pointer bg-slate-50/50">
                   <input
                     type="file"
                     accept=".xlsx, .xls"
@@ -416,11 +416,11 @@ export default function UploadsPage() {
                     id="file-input"
                   />
                   <label htmlFor="file-input" className="cursor-pointer block">
-                    <FileSpreadsheet className="w-12 h-12 text-blue-500 mx-auto mb-3" />
-                    <div className="text-sm font-semibold text-slate-800">
+                    <FileSpreadsheet className="w-10 h-10 sm:w-12 sm:h-12 text-blue-500 mx-auto mb-2 sm:mb-3" />
+                    <div className="text-xs sm:text-sm font-semibold text-slate-800 break-all sm:break-normal">
                       {file ? file.name : 'Bấm vào đây để chọn file Excel hoặc kéo thả file'}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
+                    <div className="text-[11px] sm:text-xs text-slate-400 mt-1">
                       Định dạng hỗ trợ: .xlsx, .xls, tối đa 25 MB (báo cáo có chi tiết linh kiện)
                     </div>
                   </label>

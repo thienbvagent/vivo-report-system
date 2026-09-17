@@ -279,130 +279,137 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Navbar user={user} />
 
-      <main className="flex-1 w-full max-w-[99%] xl:max-w-[98%] 2xl:max-w-[97%] mx-auto px-2 sm:px-4 py-5">
-        {/* Header toolbar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <main className="flex-1 w-full max-w-[99%] xl:max-w-[98%] 2xl:max-w-[97%] mx-auto px-2.5 sm:px-4 md:px-5 py-4 sm:py-6">
+        {/* Header Title & Center Info */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Bảng Điều Khiển Báo Cáo
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Trung tâm: <strong>{user.centerName}</strong> ({user.centerCode})
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Trung tâm: <strong className="text-slate-800">{user.centerName}</strong> ({user.centerCode})
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Filter Date */}
-            <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-xl shadow-sm border border-slate-200 text-sm">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-600 font-medium">Ngày báo cáo:</span>
-              <select
-                value={selectedDate}
-                onChange={e => handleDateChange(e.target.value)}
-                className="bg-transparent font-semibold text-blue-600 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL">Tất cả các ngày ({totalAllRows} dòng)</option>
-                {availableDates.map(d => (
-                  <option key={d} value={d}>
-                    {d} ({dateCounts[d] || 0} dòng)
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Control Card Tier 1: Filter Date & Utilities */}
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm mb-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Filter Date */}
+          <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm w-full sm:w-auto">
+            <Calendar className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            <span className="text-slate-600 font-medium whitespace-nowrap">Ngày báo cáo:</span>
+            <select
+              value={selectedDate}
+              onChange={e => handleDateChange(e.target.value)}
+              className="bg-transparent font-bold text-blue-600 focus:outline-none cursor-pointer w-full sm:w-auto truncate"
+            >
+              <option value="ALL">Tất cả các ngày ({totalAllRows} dòng)</option>
+              {availableDates.map(d => (
+                <option key={d} value={d}>
+                  {d} ({dateCounts[d] || 0} dòng)
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {/* Refresh */}
+          {/* Refresh & Reset Buttons */}
+          <div className="flex items-center space-x-2 justify-end">
             <button
               onClick={() => fetchReportData(selectedDate)}
-              className="p-2.5 bg-white text-slate-600 hover:text-blue-600 border border-slate-200 rounded-xl shadow-sm transition"
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-blue-600 border border-slate-200 rounded-lg shadow-sm transition min-h-[40px] flex items-center justify-center"
               title="Làm mới dữ liệu"
+              aria-label="Làm mới dữ liệu"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
 
-            {/* Clear / Reset Data */}
             <button
               onClick={handleClearData}
-              className="flex items-center space-x-1.5 p-2 bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl shadow-sm transition text-xs font-semibold"
+              className="flex items-center space-x-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg shadow-sm transition text-xs font-semibold min-h-[40px]"
               title="Xóa toàn bộ dữ liệu báo cáo cũ của trung tâm này để nạp lại từ đầu"
             >
-              <Trash2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Làm Sạch Dữ Liệu</span>
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Làm Sạch Dữ Liệu</span>
             </button>
-
-            {/* Export Google Sheets Button */}
-            <button
-              onClick={handleExportGoogleSheets}
-              disabled={exporting || rows.length === 0 || selectedDate === 'ALL'}
-              className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm"
-              title="Xuất dữ liệu ngày đang chọn sang Google Sheets qua n8n"
-            >
-              <Download className="w-4 h-4" />
-              <span>{exporting ? 'Đang xuất...' : 'Xuất Google Sheets'}</span>
-            </button>
-
-            {/* Download Tan Tam Debt Report Button */}
-            <a
-              href={selectedDate !== 'ALL' ? `/api/export?date=${encodeURIComponent(selectedDate)}&type=tantam` : '#'}
-              onClick={e => {
-                if (selectedDate === 'ALL') {
-                  e.preventDefault();
-                  alert('Vui lòng chọn một ngày cụ thể (ví dụ: 2026-09-15) trên ô Ngày báo cáo để xuất Báo cáo Công Nợ Tận Tâm!');
-                }
-              }}
-              className={`flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 || selectedDate === 'ALL' ? 'opacity-50 pointer-events-none' : ''}`}
-              title="Xuất file Báo cáo Công Nợ Tận Tâm chuẩn màu xanh/xanh dương, công thức =SUBTOTAL, =SUM và mã Jobcard"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Báo Cáo Công Nợ Tận Tâm (.xlsx)</span>
-            </a>
-
-            {/* Download Full Excel File Button */}
-            <a
-              href={`/api/export?date=${encodeURIComponent(selectedDate)}&type=full`}
-              className={`flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold shadow-md transition text-sm ${rows.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}
-              title="Tải trực tiếp file Excel (.xlsx) đầy đủ tất cả các cột thông tin hiển thị trên bảng"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Tải Báo Cáo Đầy Đủ (.xlsx)</span>
-            </a>
           </div>
+        </div>
+
+        {/* Control Card Tier 2: Responsive Export Action Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mb-4">
+          {/* Export Google Sheets Button */}
+          <button
+            onClick={handleExportGoogleSheets}
+            disabled={exporting || rows.length === 0 || selectedDate === 'ALL'}
+            className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl font-bold shadow-sm transition text-xs sm:text-sm min-h-[44px]"
+            title="Xuất dữ liệu ngày đang chọn sang Google Sheets qua n8n"
+          >
+            <Download className="w-4 h-4 flex-shrink-0" />
+            <span>{exporting ? 'Đang xuất sang Sheets...' : 'Xuất Google Sheets'}</span>
+          </button>
+
+          {/* Download Tan Tam Debt Report Button */}
+          <a
+            href={selectedDate !== 'ALL' ? `/api/export?date=${encodeURIComponent(selectedDate)}&type=tantam` : '#'}
+            onClick={e => {
+              if (selectedDate === 'ALL') {
+                e.preventDefault();
+                alert('Vui lòng chọn một ngày cụ thể (ví dụ: 2026-09-15) trên ô Ngày báo cáo để xuất Báo cáo Công Nợ Tận Tâm!');
+              }
+            }}
+            className={`flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-sm transition text-xs sm:text-sm min-h-[44px] ${rows.length === 0 || selectedDate === 'ALL' ? 'opacity-50 pointer-events-none' : ''}`}
+            title="Xuất file Báo cáo Công Nợ Tận Tâm chuẩn màu xanh/xanh dương, công thức =SUBTOTAL, =SUM và mã Jobcard"
+          >
+            <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Báo Cáo Công Nợ Tận Tâm (.xlsx)</span>
+          </a>
+
+          {/* Download Full Excel File Button */}
+          <a
+            href={`/api/export?date=${encodeURIComponent(selectedDate)}&type=full`}
+            className={`flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-sm transition text-xs sm:text-sm min-h-[44px] sm:col-span-2 lg:col-span-1 ${rows.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}
+            title="Tải trực tiếp file Excel (.xlsx) đầy đủ tất cả các cột thông tin hiển thị trên bảng"
+          >
+            <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
+            <span>Tải Báo Cáo Đầy Đủ (.xlsx)</span>
+          </a>
         </div>
 
 
         {/* Google Sheets Link Bar */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-3">
-          <div className="flex items-center space-x-2 w-full md:w-auto flex-1">
+        <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-sm mb-4 sm:mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex items-center space-x-2 w-full flex-1 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
               <Link2 className="w-4 h-4" />
             </div>
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-w-0">
               <input
                 type="url"
                 placeholder="Dán link Google Sheet tại đây (https://docs.google.com/spreadsheets/d/.../edit)..."
                 value={googleSheetUrl}
                 onChange={e => handleSheetUrlChange(e.target.value)}
-                className="w-full text-xs sm:text-sm px-3 py-1.5 pr-8 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-700 placeholder:font-sans"
+                className="w-full text-xs sm:text-sm px-3 py-2 sm:py-1.5 pr-8 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-700 placeholder:font-sans min-h-[38px]"
               />
               {googleSheetUrl.trim() && (
                 <button
                   type="button"
                   onClick={handleClearSheetUrl}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 p-0.5 rounded transition"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 p-1 rounded transition"
                   title="Xóa link Google Sheet của trung tâm này"
+                  aria-label="Xóa link Google Sheet"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
           {googleSheetUrl.trim() && (
-            <div className="flex items-center space-x-2 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex-shrink-0 w-full md:w-auto justify-between md:justify-start">
+            <div className="flex items-center space-x-2 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-2 sm:py-1.5 rounded-lg border border-emerald-200 flex-shrink-0 justify-between sm:justify-start">
               <span>Đã kết nối Sheet ID: <strong className="font-mono">{extractSheetId(googleSheetUrl).slice(0, 15)}...</strong></span>
               <a 
                 href={googleSheetUrl.startsWith('http') ? googleSheetUrl : `https://${googleSheetUrl}`} 
                 target="_blank" 
                 rel="noreferrer"
-                className="text-emerald-600 hover:text-emerald-800 inline-flex items-center ml-1"
+                className="text-emerald-600 hover:text-emerald-800 p-1 inline-flex items-center"
                 title="Mở Google Sheet"
               >
                 <ExternalLink className="w-3.5 h-3.5" />

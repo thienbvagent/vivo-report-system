@@ -60,9 +60,9 @@ export default function DataTable({ rows }: DataTableProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full">
       {/* Search & Filter Toolbar */}
-      <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+      <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+        <div className="relative w-full lg:w-80">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Tìm theo số phiếu, mã hoặc tên LK..."
@@ -71,65 +71,67 @@ export default function DataTable({ rows }: DataTableProps) {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px]"
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          {/* Customer Filter */}
-          <select
-            value={filterCustomer}
-            onChange={e => {
-              setFilterCustomer(e.target.value as any);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ALL">Tất cả Khách Hàng</option>
-            <option value="KL">Khách Lẻ (KL)</option>
-            <option value="TGDĐ">Thế Giới Di Động (TGDĐ)</option>
-            <option value="INSURANCE">Công ty bảo hiểm ngoài</option>
-          </select>
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+            {/* Customer Filter */}
+            <select
+              value={filterCustomer}
+              onChange={e => {
+                setFilterCustomer(e.target.value as any);
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px]"
+            >
+              <option value="ALL">Tất cả Khách Hàng</option>
+              <option value="KL">Khách Lẻ (KL)</option>
+              <option value="TGDĐ">Thế Giới Di Động (TGDĐ)</option>
+              <option value="INSURANCE">Bảo hiểm ngoài</option>
+            </select>
 
-          {/* Payment Filter */}
-          <select
-            value={filterPayment}
-            onChange={e => {
-              setFilterPayment(e.target.value as any);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ALL">Tất cả PTTT</option>
-            <option value="TM">Tiền Mặt (TM)</option>
-            <option value="CN">Công Nợ (CN)</option>
-          </select>
+            {/* Payment Filter */}
+            <select
+              value={filterPayment}
+              onChange={e => {
+                setFilterPayment(e.target.value as any);
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px]"
+            >
+              <option value="ALL">Tất cả PTTT</option>
+              <option value="TM">Tiền Mặt (TM)</option>
+              <option value="CN">Công Nợ (CN)</option>
+            </select>
 
-          {/* Export classification Filter */}
-          <select
-            value={filterExportType}
-            onChange={e => {
-              setFilterExportType(e.target.value as any);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ALL">Tất cả Loại Xuất</option>
-            <option value="BH">Xuất Bảo Hành (=1)</option>
-            <option value="PK">Xuất Phụ Kiện (=1)</option>
-            <option value="SC">Xuất Sửa Chữa (=1)</option>
-          </select>
+            {/* Export classification Filter */}
+            <select
+              value={filterExportType}
+              onChange={e => {
+                setFilterExportType(e.target.value as any);
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px]"
+            >
+              <option value="ALL">Tất cả Loại Xuất</option>
+              <option value="BH">Xuất Bảo Hành (=1)</option>
+              <option value="PK">Xuất Phụ Kiện (=1)</option>
+              <option value="SC">Xuất Sửa Chữa (=1)</option>
+            </select>
+          </div>
 
-          <span className="text-xs text-slate-500 ml-2">
+          <div className="text-xs text-slate-500 sm:ml-2 text-right sm:text-left self-center">
             Hiển thị <strong>{filteredRows.length}</strong> / {rows.length} dòng
-          </span>
+          </div>
         </div>
       </div>
 
       {/* Chú thích phía trên bảng */}
-      <div className="px-4 py-2 bg-amber-50/80 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+      <div className="px-3 sm:px-4 py-2 bg-amber-50/80 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
         <div className="flex items-center gap-2">
-          <span className="w-5 h-3 rounded bg-amber-200 border border-amber-400 flex-shrink-0 inline-block shadow-sm"></span>
+          <span className="w-4 h-3 rounded bg-amber-200 border border-amber-400 flex-shrink-0 inline-block shadow-sm"></span>
           <span>
             <strong>Chú thích:</strong> Dòng được bôi vàng là máy của <strong>Công ty bảo hiểm bên ngoài đem đến sửa</strong>.
           </span>
@@ -141,28 +143,38 @@ export default function DataTable({ rows }: DataTableProps) {
         )}
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      {/* Mobile Swipe Hint */}
+      <div className="md:hidden px-3 py-1.5 bg-slate-100/90 border-b border-slate-200 text-[11px] text-slate-600 flex items-center justify-between font-medium">
+        <span>👉 Vuốt ngang bảng để xem đầy đủ 17 cột</span>
+        <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">17 cột</span>
+      </div>
+
+      {/* Table with Sticky Left Columns */}
+      <div className="overflow-x-auto custom-scrollbar">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-semibold">
-              <th className="py-2.5 px-1.5 text-center w-8">STT</th>
-              <th className="py-2.5 px-2 whitespace-nowrap">Số Phiếu Sửa Chữa</th>
-              <th className="py-2.5 px-1.5 whitespace-nowrap">Mã LK</th>
-              <th className="py-2.5 px-2 whitespace-nowrap">Tên Vật Tư LK</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất BH</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất PK</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Xuất SC</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">Đơn Giá</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">Tiền Mặt</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">TM Trước Thuế</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">Công Nợ</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">CN Sau CK</th>
-              <th className="py-2.5 px-2 text-right whitespace-nowrap">CN Trước Thuế</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Khách</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">PTTT</th>
-              <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Jobcard</th>
-              <th className="py-2.5 px-2 whitespace-nowrap">Thời Gian Lấy Máy</th>
+              <th className="py-2.5 px-2 text-center w-10 sticky left-0 z-20 bg-slate-100 border-r border-slate-200">
+                STT
+              </th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap sticky left-10 z-20 bg-slate-100 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.08)]">
+                Số Phiếu Sửa Chữa
+              </th>
+              <th className="py-2.5 px-2 whitespace-nowrap">Mã LK</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Tên Vật Tư LK</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">Xuất BH</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">Xuất PK</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">Xuất SC</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Đơn Giá</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Tiền Mặt</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">TM Trước Thuế</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Công Nợ</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">CN Sau CK</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">CN Trước Thuế</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">Khách</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">PTTT</th>
+              <th className="py-2.5 px-2 text-center whitespace-nowrap">Jobcard</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Thời Gian Lấy Máy</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -175,78 +187,81 @@ export default function DataTable({ rows }: DataTableProps) {
             ) : (
               paginatedRows.map((r, i) => {
                 const isInsurance = String(r['Loại hình đem đến sửa'] || '').trim().toLowerCase().includes('bảo hiểm');
+                const rowBg = isInsurance 
+                  ? 'bg-amber-100 hover:bg-amber-200/90 text-slate-900 font-medium' 
+                  : 'bg-white hover:bg-blue-50/50';
+                const stickyBg = isInsurance
+                  ? 'bg-amber-100 group-hover:bg-amber-200/90'
+                  : 'bg-white group-hover:bg-blue-50/50';
+
                 return (
                   <tr 
                     key={i} 
-                    className={`transition ${
-                      isInsurance 
-                        ? 'bg-amber-100/90 hover:bg-amber-200/80 border-b border-amber-300/80 text-slate-900 font-medium' 
-                        : 'hover:bg-blue-50/40'
-                    }`}
+                    className={`group transition ${rowBg}`}
                   >
-                    <td className="py-2 px-1 text-center text-slate-400 font-mono text-xs">
+                    <td className={`py-2.5 px-2 text-center text-slate-500 font-mono text-xs sticky left-0 z-10 border-r border-slate-200/80 ${stickyBg}`}>
                       {(currentPage - 1) * pageSize + i + 1}
                     </td>
                     <td 
-                      className={`py-2 px-2 font-mono whitespace-nowrap text-xs ${
+                      className={`py-2.5 px-2.5 font-mono whitespace-nowrap text-xs sticky left-10 z-10 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.08)] ${stickyBg} ${
                         isInsurance 
                           ? 'font-bold text-amber-950' 
-                          : 'font-medium text-blue-700'
+                          : 'font-bold text-blue-700'
                       }`}
                       title={isInsurance ? 'Máy của Công ty bảo hiểm bên ngoài đem đến sửa' : undefined}
                     >
                       {r['Số phiếu sửa chữa']}
                     </td>
-                    <td className="py-2 px-1.5 font-mono font-medium text-slate-800 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2 font-mono font-medium text-slate-800 whitespace-nowrap text-xs">
                       {r['Mã vật tư linh kiện'] || '-'}
                     </td>
-                    <td className="py-2 px-2 text-slate-700 max-w-[130px] xl:max-w-[180px] 2xl:max-w-[240px] truncate text-xs" title={r['Tên vật tư']}>
+                    <td className="py-2.5 px-2.5 text-slate-700 max-w-[140px] sm:max-w-[200px] xl:max-w-[260px] truncate text-xs" title={r['Tên vật tư']}>
                       {r['Tên vật tư'] || '-'}
                     </td>
-                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center font-bold whitespace-nowrap">
                       {r['Xuất Bảo Hành'] === 1 || r['Xuất Bảo Hành'] === '1' ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-teal-100 text-teal-800">1</span>
                       ) : null}
                     </td>
-                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center font-bold whitespace-nowrap">
                       {r['Xuất phụ kiện'] === 1 || r['Xuất phụ kiện'] === '1' ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-indigo-100 text-indigo-800">1</span>
                       ) : null}
                     </td>
-                    <td className="py-2 px-1.5 text-center font-bold whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center font-bold whitespace-nowrap">
                       {r['Xuất Sửa Chữa'] === 1 || r['Xuất Sửa Chữa'] === '1' ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-purple-100 text-purple-800">1</span>
                       ) : null}
                     </td>
-                    <td className="py-2 px-2 text-right font-medium text-slate-900 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-medium text-slate-900 whitespace-nowrap text-xs">
                       {formatCurrency(r['Đơn giá'])}
                     </td>
-                    <td className="py-2 px-2 text-right font-semibold text-emerald-600 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-bold text-emerald-600 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'KL'
                         ? (r['Doanh thu tiền mặt'] !== null && r['Doanh thu tiền mặt'] !== undefined ? formatCurrency(r['Doanh thu tiền mặt']) : '0')
                         : '-'}
                     </td>
-                    <td className="py-2 px-2 text-right font-mono text-emerald-700/90 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-mono text-emerald-700/90 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'KL'
                         ? (r['Doanh thu tiền mặt trước thuế'] !== null && r['Doanh thu tiền mặt trước thuế'] !== undefined ? formatCurrency(r['Doanh thu tiền mặt trước thuế']) : '0')
                         : '-'}
                     </td>
-                    <td className="py-2 px-2 text-right font-semibold text-amber-600 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-bold text-amber-600 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'TGDĐ'
                         ? (r['Công nợ'] !== null && r['Công nợ'] !== undefined ? formatCurrency(r['Công nợ']) : '0')
                         : '-'}
                     </td>
-                    <td className="py-2 px-2 text-right font-mono text-amber-700/90 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-mono text-amber-700/90 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'TGDĐ'
                         ? (r['CN sau chiết khấu'] !== null && r['CN sau chiết khấu'] !== undefined ? formatCurrency(r['CN sau chiết khấu']) : '0')
                         : '-'}
                     </td>
-                    <td className="py-2 px-2 text-right font-mono text-amber-700/90 whitespace-nowrap text-xs">
+                    <td className="py-2.5 px-2.5 text-right font-mono text-amber-700/90 whitespace-nowrap text-xs">
                       {r['Khách hàng'] === 'TGDĐ'
                         ? (r['CN trước thuế'] !== null && r['CN trước thuế'] !== undefined ? formatCurrency(r['CN trước thuế']) : '0')
                         : '-'}
                     </td>
-                    <td className="py-2 px-1.5 text-center whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center whitespace-nowrap">
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold ${
                           r['Khách hàng'] === 'TGDĐ'
@@ -257,7 +272,7 @@ export default function DataTable({ rows }: DataTableProps) {
                         {r['Khách hàng']}
                       </span>
                     </td>
-                    <td className="py-2 px-1.5 text-center whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center whitespace-nowrap">
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold ${
                           r['Phương thức thanh toán'] === 'CN'
@@ -268,7 +283,7 @@ export default function DataTable({ rows }: DataTableProps) {
                         {r['Phương thức thanh toán']}
                       </span>
                     </td>
-                    <td className="py-2 px-1.5 text-center font-mono text-xs whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center font-mono text-xs whitespace-nowrap">
                       {r['Jobcard'] ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" title={`Mã Jobcard: ${r['Jobcard']}`}>
                           {r['Jobcard']}
@@ -277,7 +292,7 @@ export default function DataTable({ rows }: DataTableProps) {
                         <span className="text-slate-300">-</span>
                       )}
                     </td>
-                    <td className="py-2 px-2 text-slate-500 font-mono text-xs whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-slate-500 font-mono text-xs whitespace-nowrap">
                       {r['Thời gian lấy máy']}
                     </td>
                   </tr>
@@ -289,24 +304,24 @@ export default function DataTable({ rows }: DataTableProps) {
       </div>
 
       {/* Pagination Footer */}
-      <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs sm:text-sm">
-        <div className="text-slate-500">
-          Trang <strong>{currentPage}</strong> / {totalPages}
+      <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm">
+        <div className="text-slate-500 text-center sm:text-left">
+          Trang <strong>{currentPage}</strong> / {totalPages} (Tổng <strong>{filteredRows.length}</strong> dòng)
         </div>
-        <div className="flex space-x-2">
+        <div className="flex items-center space-x-2 w-full sm:w-auto justify-center sm:justify-end">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="px-3 py-1 bg-white border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 disabled:opacity-50 font-semibold min-h-[40px] text-xs sm:text-sm shadow-sm transition"
           >
-            Trước
+            Trang Trước
           </button>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="px-3 py-1 bg-white border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 disabled:opacity-50 font-semibold min-h-[40px] text-xs sm:text-sm shadow-sm transition"
           >
-            Sau
+            Trang Sau
           </button>
         </div>
       </div>

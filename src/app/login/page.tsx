@@ -41,21 +41,21 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950">
+    <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
         {/* Header */}
-        <div className="bg-blue-600 px-8 py-8 text-center text-white">
-          <div className="inline-block bg-white text-blue-600 font-black px-4 py-1.5 rounded-lg text-2xl tracking-wider mb-2">
+        <div className="bg-blue-600 px-5 py-6 sm:px-8 sm:py-8 text-center text-white">
+          <div className="inline-block bg-white text-blue-600 font-black px-4 py-1.5 rounded-lg text-2xl tracking-wider mb-2 shadow-sm">
             vivo
           </div>
-          <h1 className="text-xl font-bold">Hệ Thống Báo Cáo TTBH</h1>
+          <h1 className="text-lg sm:text-xl font-bold">Hệ Thống Báo Cáo TTBH</h1>
           <p className="text-blue-100 text-xs mt-1">Trung tâm Chăm Sóc Khách Hàng Vivo Toàn Quốc</p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-4 sm:space-y-5">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-start space-x-2">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-3 rounded-xl text-xs sm:text-sm flex items-start space-x-2">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -63,13 +63,13 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center space-x-1.5">
-              <Building2 className="w-4 h-4 text-blue-600" />
+              <Building2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
               <span>Chọn Trung Tâm CSKH Vivo (TTBH)</span>
             </label>
             <select
               value={selectedCenter}
               onChange={e => setSelectedCenter(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white min-h-[44px]"
             >
               {Object.entries(SERVICE_CENTERS).map(([code, name]) => (
                 <option key={code} value={code}>
@@ -77,12 +77,12 @@ export default function LoginPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-slate-400 mt-1">Username tương ứng với mã TTBH của bạn</p>
+            <p className="text-[11px] sm:text-xs text-slate-400 mt-1">Username tương ứng với mã TTBH của bạn</p>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 flex items-center space-x-1.5">
-              <Lock className="w-4 h-4 text-blue-600" />
+              <Lock className="w-4 h-4 text-blue-600 flex-shrink-0" />
               <span>Mật Khẩu Xác Thực</span>
             </label>
             <input
@@ -91,21 +91,21 @@ export default function LoginPage() {
               onChange={e => setPassword(e.target.value)}
               placeholder="Nhập mật khẩu..."
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white min-h-[44px]"
             />
-            <p className="text-xs text-slate-400 mt-1">Nhập mật khẩu được quản trị viên cấp cho trung tâm.</p>
+            <p className="text-[11px] sm:text-xs text-slate-400 mt-1">Nhập mật khẩu được quản trị viên cấp cho trung tâm.</p>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shadow-lg shadow-blue-500/30 flex items-center justify-center space-x-2 disabled:opacity-50"
+            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition shadow-lg shadow-blue-500/30 flex items-center justify-center space-x-2 disabled:opacity-50 min-h-[44px] text-sm"
           >
             {loading ? (
               <span>Đang xác thực...</span>
             ) : (
               <>
-                <ShieldCheck className="w-5 h-5" />
+                <ShieldCheck className="w-5 h-5 flex-shrink-0" />
                 <span>Đăng Nhập Vào Hệ Thống</span>
               </>
             )}
